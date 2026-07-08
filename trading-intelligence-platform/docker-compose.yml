@@ -1,0 +1,66 @@
+# Local dev compose for the scaffold produced by the F1 session
+# (docs/buildspec.json). Only `api` is wired to real code right now
+# (src/main.py) — the `worker` (pattern/negation/scoring pipeline) and
+# `frontend` services described in docs/architecture.md are CB build-phase
+# work, not part of this scaffold; see docs/deployment_guide.md.
+#
+# No Dockerfile yet either — `api` installs its (small) dependency set
+# inline against the official python image so `docker compose up` works
+# out of the box against just this scaffold.
+#
+# READ-ONLY REMINDER: KITE_API_KEY / KITE_ACCESS_TOKEN must only ever be
+# provisioned with read-only market-data scope. No service in this file
+# places, modifies, or cancels a broker order. See docs/CLAUDE.md section 2.
+
+services:
+  api:
+    image: python:3.11-slim
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic-settings &&
+             uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    environment:
+      ENVIRONMENT: development
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      DATABASE_URL: postgresql+psycopg://tip:tip@timescaledb:5432/tip
+      REDIS_URL: redis://redis:6379/0
+      KITE_API_KEY: ${KITE_API_KEY:-}
+      KITE_ACCESS_TOKEN: ${KITE_ACCESS_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  timescaledb:
+    image: timescale/timescaledb:2.14.2-pg15
+    environment:
+      POSTGRES_USER: tip
+      POSTGRES_PASSWORD: tip
+      POSTGRES_DB: tip
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tip"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  timescaledb_data:
+  redis_data:

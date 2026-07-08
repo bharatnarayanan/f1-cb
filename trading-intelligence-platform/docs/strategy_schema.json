@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tip.internal/schemas/strategy_canonical_logic.json",
+  "title": "StrategyCanonicalLogic",
+  "description": "The structured rule set a submitted strategy (video, free text, pseudocode, or Pine Script) is extracted into by the Strategy Agent before it can be independently backtested. Mirrors the `canonical_logic` JSONB column on `strategies` (database/schema.sql). This schema never grants arbitrary code execution — the compiler maps canonical logic to a fixed set of known indicators/comparators only.",
+  "type": "object",
+  "required": ["version", "instrument", "timeframe", "entry", "exit"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "instrument": {
+      "type": "object",
+      "required": ["underlying"],
+      "properties": {
+        "underlying": {
+          "type": "string",
+          "enum": ["NIFTY", "BANKNIFTY"]
+        },
+        "leg": {
+          "type": "string",
+          "enum": ["CE", "PE", "either"],
+          "default": "either"
+        },
+        "moneyness": {
+          "type": "string",
+          "enum": ["ITM", "ATM", "OTM"],
+          "default": "ATM"
+        },
+        "price_band": {
+          "type": "object",
+          "description": "Optional premium price band the strategy targets, e.g. BVWR's 350-450 ITM option band.",
+          "properties": {
+            "min": { "type": "number" },
+            "max": { "type": "number" }
+          }
+        }
+      }
+    },
+    "timeframe": {
+      "type": "string",
+      "enum": ["1m", "5m", "10m", "15m", "30m", "1h", "2h", "3h", "1d"]
+    },
+    "pattern_trigger": {
+      "type": "object",
+      "description": "Optional candlestick pattern precondition (e.g. BVWR's three-inside/three-outside breakout).",
+      "properties": {
+        "pattern_type": {
+          "type": "string",
+          "enum": ["engulfing", "three_inside", "three_outside", "harami", "doji", "pin_bar", "none"]
+        },
+        "breakout_offset_points": {
+          "type": "number",
+          "description": "Points added to the pattern's high/low to define a confirmed breakout, e.g. BVWR's +7."
+        }
+      }
+    },
+    "time_filters": {
+      "type": "array",
+      "description": "Time-of-day entry constraints, e.g. BVWR's 'ignore breakouts in first 10 minutes; retry after 11:00, else after 13:35 or 14:35'.",
+      "items": {
+        "type": "object",
+        "required": ["rule"],
+        "properties": {
+          "rule": { "type": "string", "enum": ["ignore_before", "require_after", "retry_window"] },
+          "time": { "type": "string", "format": "time" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": ["conditions"],
+      "properties": {
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/condition" }
+        },
+        "logic": { "type": "string", "enum": ["AND", "OR"], "default": "AND" },
+        "retracement_reference": {
+          "type": "string",
+          "enum": ["vwap_option", "vwap_spot", "none"],
+          "description": "e.g. BVWR requires entry only after price retraces to VWAP on the option and/or spot chart."
+        }
+      }
+    },
+    "exit": {
+      "type": "object",
+      "required": ["targets", "stop_loss"],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["prior_candle_high", "prior_candle_low", "day_high", "day_low", "supertrend_line", "sr_level", "fixed_points"] },
+              "value": { "type": "number", "description": "Only used when type is fixed_points." }
+            }
+          }
+        },
+        "stop_loss": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["below_ma", "below_vwap", "above_ma", "above_vwap", "fixed_points"] },
+            "reference_indicator": { "$ref": "#/definitions/operand" },
+            "value": { "type": "number" }
+          }
+        }
+      }
+    },
+    "guards": {
+      "type": "array",
+      "description": "Hard entry guardrails that must all hold, e.g. BVWR's 'never enter below 50MA'.",
+      "items": { "$ref": "#/definitions/condition" }
+    },
+    "is_preset": {
+      "type": "boolean",
+      "default": false,
+      "description": "True for the seeded founder strategy (BVWR) and any other first-class, pre-vetted rule set."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "definitions": {
+    "condition": {
+      "type": "object",
+      "required": ["left", "operator", "right"],
+      "properties": {
+        "left": { "$ref": "#/definitions/operand" },
+        "operator": { "type": "string", "enum": ["<", "<=", ">", ">=", "==", "!="] },
+        "right": { "$ref": "#/definitions/operand" }
+      }
+    },
+    "operand": {
+      "description": "A price field, a bound indicator, or a literal. Extraction (Claude) must map any observed rule onto one of these known primitives — never free-form code.",
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "price_field",
+          "required": ["field"],
+          "properties": {
+            "field": { "type": "string", "enum": ["open", "high", "low", "close", "volume"] }
+          }
+        },
+        {
+          "type": "object",
+          "title": "indicator",
+          "required": ["indicator", "period"],
+          "properties": {
+            "indicator": {
+              "type": "string",
+              "enum": ["RSI", "SMA", "EMA", "MACD", "VWAP", "SUPERTREND"]
+            },
+            "period": { "type": "integer", "minimum": 1, "maximum": 500 },
+            "params": {
+              "type": "object",
+              "description": "Indicator-specific params, e.g. SuperTrend's {period, multiplier}."
+            }
+          }
+        },
+        { "type": "number", "title": "literal" }
+      ]
+    }
+  },
+  "examples": [
+    {
+      "version": "1.0",
+      "instrument": { "underlying": "NIFTY", "leg": "either", "moneyness": "ITM", "price_band": { "min": 350, "max": 450 } },
+      "timeframe": "10m",
+      "pattern_trigger": { "pattern_type": "three_inside", "breakout_offset_points": 7 },
+      "time_filters": [
+        { "rule": "ignore_before", "time": "10:30", "note": "Ignore breakout in first 10 minutes; wait for retracement." },
+        { "rule": "retry_window", "time": "13:35", "note": "If no breakout by 11:00, trade after 13:35 or 14:35." }
+      ],
+      "entry": {
+        "logic": "AND",
+        "retracement_reference": "vwap_option",
+        "conditions": [
+          { "left": { "field": "close" }, "operator": ">", "right": { "indicator": "SMA", "period": 50 } },
+          { "left": { "field": "close" }, "operator": ">", "right": { "indicator": "VWAP", "period": 1 } },
+          { "left": { "field": "close" }, "operator": ">", "right": { "indicator": "SUPERTREND", "period": 7, "params": { "multiplier": 3 } } }
+        ]
+      },
+      "exit": {
+        "targets": [
+          { "type": "prior_candle_high" },
+          { "type": "day_high" },
+          { "type": "supertrend_line" }
+        ],
+        "stop_loss": { "type": "below_ma", "reference_indicator": { "indicator": "SMA", "period": 50 } }
+      },
+      "guards": [
+        { "left": { "field": "close" }, "operator": ">", "right": { "indicator": "SMA", "period": 50 } }
+      ],
+      "is_preset": true
+    }
+  ]
+}

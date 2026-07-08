@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+build/
+packages/agents/src/generated/
+.env
+.env.local
+*.log
+.DS_Store
+.turbo/

@@ -1,0 +1,19 @@
+{
+  "name": "f1-cb",
+  "private": true,
+  "version": "0.1.0",
+  "description": "F1 (idea refinery) + Core Builder (CB) monorepo",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:f1": "npm run dev --workspace apps/f1",
+    "dev:cb": "npm run dev --workspace apps/cb",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

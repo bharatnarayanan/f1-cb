@@ -1,0 +1,20 @@
+{
+  "name": "@f1-cb/agents",
+  "version": "0.1.0",
+  "private": true,
+  "description": "F1's conversational agents (Orchestrator, Prompt Architect) on the Claude API",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "generate": "node scripts/build-prompts.js",
+    "build": "npm run generate && tsc -p tsconfig.json",
+    "typecheck": "npm run generate && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@f1-cb/spec": "^0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
