@@ -11,9 +11,21 @@ helper is defined anywhere against this model, on purpose.
 """
 
 import uuid
-from datetime import datetime, time as time_type, timezone
+from datetime import date as date_type, datetime, time as time_type, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Time, Uuid
+from sqlalchemy import (
+    ARRAY,
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Time,
+    Uuid,
+)
 from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -175,6 +187,101 @@ class Recommendation(Base):
     vix_regime_at_creation: Mapped[str] = mapped_column(vix_regime_enum, nullable=False)
     is_expiry_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class User(Base):
+    """No login/auth routes exist yet (docs/assumptions.md) — this model
+    exists only so Phase 5's Strategy Marketplace has a valid
+    strategies.created_by to reference. See
+    alembic/versions/0004_seed_founder_strategy.py for the single seeded
+    founder row.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+strategy_source_type_enum = PGEnum(
+    "video", "text", "pseudocode", "pine_script", "user_rule",
+    name="strategy_source_type",
+    create_type=False,
+)
+
+strategy_status_enum = PGEnum(
+    "ingested", "extracted", "backtested", "usable", "rejected",
+    name="strategy_status",
+    create_type=False,
+)
+
+
+class Strategy(Base):
+    __tablename__ = "strategies"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    source_type: Mapped[str] = mapped_column(strategy_source_type_enum, nullable=False)
+    # Video URL, or null for text/pseudocode/Pine Script entered inline.
+    source_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    raw_input: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Structured rule set matching docs/strategy_schema.json — see
+    # src/llm/extraction.py (populates this) and
+    # src/engine/strategy_interpreter.py (consumes it).
+    canonical_logic: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(strategy_status_enum, nullable=False, default="ingested")
+    created_by: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class StrategyBacktest(Base):
+    __tablename__ = "strategy_backtests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    strategy_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("strategies.id", ondelete="CASCADE"), nullable=False
+    )
+    date_from: Mapped[date_type] = mapped_column(Date, nullable=False)
+    date_to: Mapped[date_type] = mapped_column(Date, nullable=False)
+    win_rate_pct: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    sharpe_ratio: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    max_drawdown_pct: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    total_return_pct: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    # 0-100, independent-backtest-derived — see src/engine/backtest.py's
+    # documented confidence formula (no formula exists anywhere in spec).
+    confidence_score: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    trade_log: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    run_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+class StrategyFusion(Base):
+    __tablename__ = "strategy_fusion"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    parent_strategy_ids: Mapped[list[uuid.UUID]] = mapped_column(ARRAY(Uuid), nullable=False)
+    resolved_logic: Mapped[dict] = mapped_column(JSON, nullable=False)
+    fused_strategy_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("strategies.id", ondelete="CASCADE"), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )

@@ -262,6 +262,76 @@ both touch things nothing in this codebase does yet:
     both documented starting heuristics, same caveat as Phase 3's
     negation-model table (#23) — not derived from real trade outcomes yet.
 
+## Phase 5 (Strategy Marketplace) — new decisions
+
+Two scope forks were confirmed with you directly before building (plan
+proposed, approved as-is):
+
+36. **No auth/login system exists yet, but `strategies.created_by` is a
+    NOT NULL FK to `users`.** Rather than build login/JWT (its own,
+    unbuilt phase), migration `0004_seed_founder_strategy.py` seeds one
+    default founder user (`founder@local`, fixed UUID
+    `00000000-0000-0000-0000-000000000001`) with a bcrypt-hashed random
+    password that no login endpoint can ever authenticate with — it exists
+    solely to satisfy the FK, not as a real credential.
+37. **Video-URL ingestion accepts a URL field, but never downloads or
+    transcribes anything.** `buildspec.json` lists video ingestion as MVP
+    but separately marks *automated* transcription as v2-only ("MVP
+    requires a manual trigger per submission"). `source_type="video"`
+    strategies still require you to paste the actual description/transcript
+    into `raw_input` yourself — no yt-dlp/speech-to-text dependency was
+    added, avoiding both a heavy new dependency footprint and YouTube's
+    ToS gray area around automated downloading.
+38. **`vectorbt==0.28.5`, not the current `1.x`** — `vectorbt>=1.0.0`
+    requires `numpy>=2.4.6`/`pandas>=3.0.3`, incompatible with the
+    `numpy==1.26.4`/`pandas==2.1.4` this repo is already pinned to (TA-Lib,
+    scipy). `0.28.5` is the newest release still on `numpy>=1.23,pandas<3.0`
+    — same "avoid the just-bumped major" reasoning as Phase 3's TA-Lib/
+    pandas-ta calls. `bcrypt==4.3.0` similarly pinned one minor behind its
+    own fresh `5.0.0` major bump.
+39. **The strategy interpreter (`src/engine/strategy_interpreter.py`) and
+    backtest engine (`src/engine/backtest.py`) simulate a LONG-ONLY
+    position on the underlying's close price** — a proxy for buying the
+    strategy's declared option leg (CE/PE), not real option premium/
+    greeks/time-decay P&L. Exit decisions happen on bar close only (no
+    intrabar high/low look-ahead). `fixed_points` targets/stops are
+    converted to a percentage via vectorbt's entry-relative `sl_stop`/
+    `tp_stop`, using the first candle's close in the fetched window as the
+    reference price. No commissions or slippage are modeled. All four are
+    returned in every backtest response's `assumptions` field, per
+    docs/CLAUDE.md section 6 ("backtests must document assumptions... no
+    look-ahead bias") — never presented as idealized-but-unstated.
+40. **`day_high`/`day_low` exit targets are an expanding max/min over the
+    whole fetched window, not a true session-reset daily high/low** — this
+    codebase doesn't track session/day boundaries anywhere yet.
+41. **`VWAP` is a continuous cumulative VWAP over the fetched window, not a
+    session-reset VWAP** — same session-boundary gap as #40.
+42. **`backtest_confidence_score` (`src/engine/backtest.py`) has no formula
+    anywhere in the spec** — a new documented heuristic: a blend of win
+    rate, a capped Sharpe ratio, and drawdown severity, scaled down for a
+    thin trade sample (fewer than 20 trades is weak evidence either way).
+    Same posture as Phase 4's `conviction_score`.
+43. **Strategy fusion's merge rule (`src/engine/fusion.py`) has no formula
+    anywhere in the spec** — a new documented heuristic: entry conditions
+    from both parents are unioned and ANDed (both must agree), guards are
+    unioned, exit targets are unioned, and the base strategy's stop_loss is
+    kept as-is (merging two different stop_loss TYPES isn't well-defined
+    without evaluating both against real data) with the other strategy's
+    stop folded in as an extra guard wherever it's expressible as one.
+44. **Claude extraction (`src/llm/extraction.py`) is built and unit-tested
+    against a mocked Anthropic client, not exercised against a real
+    `ANTHROPIC_API_KEY`** — same posture as Phase 4's narration. Unlike
+    narration, a missing key here raises `ExtractionUnavailable` (a hard
+    failure) rather than degrading to a placeholder: canonical_logic has
+    no honest "unknown" stand-in for an entire rule set the way narration's
+    one optional paragraph did. A strategy submitted without extraction
+    succeeding stays in `ingested` status, never silently marked ready.
+45. **BVWR (the founder's own strategy) is seeded using the exact
+    `canonical_logic` already hand-authored in `docs/strategy_schema.json`'s
+    `examples`** — no extraction needed for this one, it's the schema's own
+    worked example, seeded at `status="extracted"` (ready to backtest via
+    the API; migrations don't call live backtest logic).
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

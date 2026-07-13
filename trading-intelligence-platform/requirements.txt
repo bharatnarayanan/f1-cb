@@ -22,6 +22,22 @@ kiteconnect==5.2.0
 # docs/CLAUDE.md section 3). See src/llm/narration.py.
 anthropic==0.40.0
 
+# Strategy Marketplace independent backtest (Phase 5, docs/CLAUDE.md
+# section 4: "do NOT build a backtest engine from scratch"). Pinned to the
+# last pre-1.0 release: vectorbt>=1.0.0 requires numpy>=2.4.6 and
+# pandas>=3.0.3, incompatible with numpy==1.26.4/pandas==2.1.4 above (which
+# TA-Lib/scipy are pinned against) — 0.28.5 is the newest release still on
+# numpy>=1.23,pandas<3.0, same "avoid the just-bumped major" logic as the
+# TA-Lib/pandas-ta calls in Phase 3.
+vectorbt==0.28.5
+
+# Password hashing (docs/CLAUDE.md section 3: bcrypt, never plaintext) —
+# used only to seed the single default founder user Phase 5 needs
+# (strategies.created_by is a NOT NULL FK; no login/auth routes exist yet,
+# that's a separate, unbuilt phase). Pinned one minor behind the just-
+# released 5.0.0 major bump for the same reason as vectorbt/numpy above.
+bcrypt==4.3.0
+
 # Database
 sqlalchemy==2.0.35
 alembic==1.13.3

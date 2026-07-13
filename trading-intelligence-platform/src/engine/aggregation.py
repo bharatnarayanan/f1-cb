@@ -12,7 +12,7 @@ from typing import Any
 
 import pandas as pd
 
-_RESAMPLE_RULE: dict[str, str] = {
+TIMEFRAME_TO_PANDAS_FREQ: dict[str, str] = {
     "5m": "5min",
     "10m": "10min",
     "15m": "15min",
@@ -28,7 +28,7 @@ def resample_candles(candles: list[dict[str, Any]], target_timeframe: str) -> li
     implementations return). Returns candles resampled to target_timeframe,
     dropping any trailing bucket with no bars in it.
     """
-    if target_timeframe not in _RESAMPLE_RULE:
+    if target_timeframe not in TIMEFRAME_TO_PANDAS_FREQ:
         raise ValueError(f"unsupported timeframe={target_timeframe!r}")
     if target_timeframe == "5m" or not candles:
         return candles
@@ -36,7 +36,7 @@ def resample_candles(candles: list[dict[str, Any]], target_timeframe: str) -> li
     timestamps = [c.get("date") or c["ts"] for c in candles]
     df = pd.DataFrame(candles, index=pd.DatetimeIndex(timestamps))
     resampled = (
-        df.resample(_RESAMPLE_RULE[target_timeframe], label="left", closed="left")
+        df.resample(TIMEFRAME_TO_PANDAS_FREQ[target_timeframe], label="left", closed="left")
         .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
         .dropna(subset=["open"])
     )
