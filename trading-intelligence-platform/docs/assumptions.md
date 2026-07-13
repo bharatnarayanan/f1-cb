@@ -203,11 +203,64 @@ match your intent.
     hours, not weeks). True cross-timeframe SR confluence is future work
     once real historical depth exists.
 28. **`resolve_instrument_token` (`src/market_data/instruments.py`) only
-    resolves symbols present in `MarketDataClient.get_instruments()`** — in
-    sample mode that's NIFTY 50 / NIFTY BANK / INDIA VIX only
-    (`SampleMarketDataClient`'s fixed instrument list). Scanning any other
-    symbol in sample mode fails with a 400 until the sample instrument list
-    is extended or `DATA_MODE=live` is used.
+    resolves symbols present in `MarketDataClient.get_instruments()`.**
+    Sample mode's instrument list was NIFTY 50 / NIFTY BANK / INDIA VIX only
+    as of Phase 3; Phase 4 (#29 below) extended it to the full watchlist.
+    Any symbol still outside that list fails with a 400 until added, or
+    `DATA_MODE=live` is used.
+
+## Phase 4 (Intelligence) — new decisions
+
+Two scope forks were confirmed with you directly before building, since
+both touch things nothing in this codebase does yet:
+
+29. **Confidence scoring's `OI_accumulation` and `strike_candle_pattern`
+    factors stay `None`/"unknown" this pass** — nothing fetches option-chain
+    or strike-level data yet (only index/equity candles exist). Rather than
+    silently zeroing their 0.15+0.20 combined weight (which would cap
+    confidence at 65% of its stated scale forever), `compute_confidence`
+    (`src/engine/scoring.py`) proportionally renormalizes the weights of
+    whatever factors ARE known and reports which ones weren't in
+    `unavailable_factors` — visible in every recommendation's rationale
+    tree, never hidden. `SampleMarketDataClient` was extended with the full
+    15-constituent + 5-sector-index watchlist (was NIFTY 50/BANK/VIX only)
+    so `heavyweight_pattern_alignment` has real sample data to score against.
+30. **Claude narration (`src/llm/narration.py`) is built but not
+    live-tested** — no real `ANTHROPIC_API_KEY` in this environment. It
+    degrades gracefully (an explicit "Narration unavailable" string, not a
+    crash or a silent empty field) when the key is missing/placeholder or
+    the API call fails, so a fully-scored, valid recommendation is never
+    blocked by an optional narration layer. `ANTHROPIC_MODEL =
+    "claude-sonnet-5"` is a starting choice, easy to change. Test coverage
+    (`tests/test_narration.py`) mocks the Anthropic client throughout —
+    you'll need to test the real narrated output yourself once a key exists.
+31. **`conviction_score` has no formula anywhere in the original spec** —
+    it's a new documented assumption: `confidence dampened by risk, capped
+    at a 50% maximum reduction` (`compute_conviction`,
+    `src/engine/scoring.py`), so a maxed-out risk score can never fully
+    zero out a genuinely strong confidence signal (risk_score is already
+    shown alongside it for that; conviction isn't meant to duplicate it).
+32. **Only Tactical and Impulse recommendation categories are reachable**
+    (`src/engine/recommendations.py`) — Strategic (2-5 day outlook) needs
+    daily candles (this repo only aggregates up to 3h) and BTST
+    (expiry-adjacent) needs an options-expiry calendar; neither exists yet.
+    Requesting an unsupported timeframe raises loudly rather than
+    mislabeling a recommendation's category.
+33. **`action` is a directional CE/PE proxy only** (`BUY_CE` for bullish,
+    `BUY_PE` for bearish) — `strike`, `option_type`, `entry_price`,
+    `stop_loss`, `target_price` all stay unset on every recommendation.
+    There's no strike-selection logic or option-chain pricing built yet
+    (same gap as #29); recommending a specific strike or price here would
+    fabricate precision this system doesn't actually have.
+34. **`watchlist_constituents`/`sector_indices` are seeded (migration 0003)
+    with symbol/name/sector only — `index_weight_pct` is left NULL.**
+    Real NIFTY index weights drift over time and NSE publishes the
+    authoritative current figures; hardcoding a possibly-stale percentage
+    here would misrepresent it as current fact.
+35. **`compute_macro_sr_alignment`'s "room to run" formula and the impulse-
+    move 3x-average-range threshold** (`src/engine/seasonality.py`) are
+    both documented starting heuristics, same caveat as Phase 3's
+    negation-model table (#23) — not derived from real trade outcomes yet.
 
 ## Explicitly not built (matches session's own phasing)
 

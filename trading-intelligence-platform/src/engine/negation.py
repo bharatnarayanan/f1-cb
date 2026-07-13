@@ -29,6 +29,10 @@ _BASE_CANDLES_TO_NEGATE: dict[str, float] = {
     "harami": 5.0,
     "doji": 2.5,
     "pin_bar": 3.5,
+    # Impulse moves (F4.2, src/engine/seasonality.py) fade faster than a
+    # reversal candlestick pattern — a shorter starting estimate, same
+    # "documented default, not backtest-derived yet" caveat as the rest.
+    "impulse": 2.0,
 }
 
 # Higher VIX regimes negate patterns faster (more volatile price action

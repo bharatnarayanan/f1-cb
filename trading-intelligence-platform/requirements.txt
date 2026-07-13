@@ -18,6 +18,10 @@ scipy==1.11.4
 # Zerodha Kite Connect — READ-ONLY usage only, see docs/CLAUDE.md section 2.
 kiteconnect==5.2.0
 
+# Claude — rationale narration ONLY, never numeric decisions (Phase 4,
+# docs/CLAUDE.md section 3). See src/llm/narration.py.
+anthropic==0.40.0
+
 # Database
 sqlalchemy==2.0.35
 alembic==1.13.3

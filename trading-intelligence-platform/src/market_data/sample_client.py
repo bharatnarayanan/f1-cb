@@ -24,18 +24,57 @@ _BASE_PRICES: dict[str, float] = {
     "NSE:NIFTY 50": 24500.0,
     "NSE:NIFTY BANK": 52000.0,
     "NSE:INDIA VIX": 13.5,
-    "NSE:RELIANCE": 2950.0,
+    # Heavyweight watchlist constituents (docs/assumptions.md #6) — added so
+    # the F4.1 correlation engine has real sample data to demonstrate
+    # against, not just the index/VIX trio Phase 2/3 needed.
+    "NSE:RELIANCE": 1500.0,
     "NSE:HDFCBANK": 1650.0,
     "NSE:ICICIBANK": 1200.0,
     "NSE:INFY": 1850.0,
     "NSE:TCS": 3850.0,
+    "NSE:LT": 3600.0,
+    "NSE:BHARTIARTL": 1650.0,
+    "NSE:ITC": 470.0,
+    "NSE:KOTAKBANK": 1800.0,
+    "NSE:AXISBANK": 1150.0,
+    "NSE:SBIN": 830.0,
+    "NSE:BAJFINANCE": 7200.0,
+    "NSE:HINDUNILVR": 2400.0,
+    "NSE:M&M": 2900.0,
+    "NSE:SUNPHARMA": 1750.0,
+    "NSE:NIFTY IT": 42000.0,
+    "NSE:NIFTY FMCG": 58000.0,
+    "NSE:NIFTY PHARMA": 22000.0,
+    "NSE:NIFTY AUTO": 24000.0,
 }
 _DEFAULT_BASE_PRICE = 1000.0
 
+# instrument_tokens below are ARBITRARY placeholders for sample mode only —
+# not real Kite Connect tokens. Never use them against a live Kite session;
+# DATA_MODE=live resolves real tokens via KiteMarketDataClient.get_instruments().
 _SAMPLE_INSTRUMENTS: list[dict[str, Any]] = [
     {"instrument_token": 256265, "tradingsymbol": "NIFTY 50", "exchange": "NSE", "segment": "INDICES"},
     {"instrument_token": 260105, "tradingsymbol": "NIFTY BANK", "exchange": "NSE", "segment": "INDICES"},
     {"instrument_token": 264969, "tradingsymbol": "INDIA VIX", "exchange": "NSE", "segment": "INDICES"},
+    {"instrument_token": 738561, "tradingsymbol": "RELIANCE", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 341249, "tradingsymbol": "HDFCBANK", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 1270529, "tradingsymbol": "ICICIBANK", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 408065, "tradingsymbol": "INFY", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 2953217, "tradingsymbol": "TCS", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 2939649, "tradingsymbol": "LT", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 2714625, "tradingsymbol": "BHARTIARTL", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 424961, "tradingsymbol": "ITC", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 492033, "tradingsymbol": "KOTAKBANK", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 1510401, "tradingsymbol": "AXISBANK", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 779521, "tradingsymbol": "SBIN", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 81153, "tradingsymbol": "BAJFINANCE", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 356865, "tradingsymbol": "HINDUNILVR", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 519937, "tradingsymbol": "M&M", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 857857, "tradingsymbol": "SUNPHARMA", "exchange": "NSE", "segment": "EQ"},
+    {"instrument_token": 2865921, "tradingsymbol": "NIFTY IT", "exchange": "NSE", "segment": "INDICES"},
+    {"instrument_token": 261889, "tradingsymbol": "NIFTY FMCG", "exchange": "NSE", "segment": "INDICES"},
+    {"instrument_token": 262657, "tradingsymbol": "NIFTY PHARMA", "exchange": "NSE", "segment": "INDICES"},
+    {"instrument_token": 263169, "tradingsymbol": "NIFTY AUTO", "exchange": "NSE", "segment": "INDICES"},
 ]
 
 # instrument_token -> base price, so get_historical_candles() reflects the
