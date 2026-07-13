@@ -17,7 +17,9 @@ src/engine/recommendations.py's docstring): action is a directional CE/PE
 proxy only, never a specific instrument to trade.
 """
 
+import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -188,6 +190,7 @@ def create_recommendation(
         "data_mode": settings.data_mode,
         "vix_regime": vix_regime,
         "recommendation": {
+            "id": str(row.id),
             "category": draft.category,
             "action": draft.action,
             "forecast_horizon": draft.forecast_horizon,
@@ -198,3 +201,52 @@ def create_recommendation(
         },
         "alerts": [{"channel": log.channel, "dispatch_status": log.dispatch_status} for log in alert_logs],
     }
+
+
+def _serialize_recommendation_summary(row: Recommendation) -> dict[str, Any]:
+    return {
+        "id": str(row.id),
+        "symbol": row.symbol,
+        "category": row.category,
+        "action": row.action,
+        "forecast_horizon": row.forecast_horizon,
+        "confidence_score": float(row.confidence_score),
+        "risk_score": float(row.risk_score),
+        "conviction_score": float(row.conviction_score),
+        "vix_regime_at_creation": row.vix_regime_at_creation,
+        "status": row.status,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
+@router.get("")
+def list_recommendations(
+    category: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    query = select(Recommendation).order_by(Recommendation.created_at.desc()).limit(limit)
+    if category is not None:
+        query = query.where(Recommendation.category == category)
+    if status is not None:
+        query = query.where(Recommendation.status == status)
+
+    rows = db.execute(query).scalars().all()
+    return {"recommendations": [_serialize_recommendation_summary(row) for row in rows]}
+
+
+@router.get("/{recommendation_id}")
+def get_recommendation(recommendation_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    try:
+        parsed_id = uuid.UUID(recommendation_id)
+    except ValueError:
+        raise MarketDataInvalidRequest(f"{recommendation_id!r} is not a valid recommendation id.")
+
+    row = db.get(Recommendation, parsed_id)
+    if row is None:
+        raise MarketDataInvalidRequest(f"No recommendation found with id={recommendation_id!r}.")
+
+    summary = _serialize_recommendation_summary(row)
+    summary["rationale"] = row.rationale
+    return summary

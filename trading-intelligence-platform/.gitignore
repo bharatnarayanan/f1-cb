@@ -10,6 +10,8 @@ venv/
 
 # Node / frontend
 node_modules/
+frontend/dist/
+frontend/node_modules/.tmp/
 
 # OS
 .DS_Store

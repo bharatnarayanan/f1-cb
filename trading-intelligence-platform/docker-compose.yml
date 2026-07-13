@@ -1,7 +1,7 @@
 # Local dev compose for the Trading Intelligence Platform.
-# `api` is wired to real code (src/main.py) — the `worker` (scheduled
-# pattern/negation/scoring pipeline) and `frontend` services described in
-# docs/architecture.md are later-phase work; see docs/deployment_guide.md.
+# `api` and `frontend` are wired to real code — the `worker` (scheduled
+# pattern/negation/scoring pipeline) described in docs/architecture.md is
+# still later-phase work; see docs/deployment_guide.md.
 #
 # `api` builds from ./Dockerfile (TA-Lib's C library needs compiling —
 # python:3.11-slim's apt repos don't carry it, see Dockerfile's own
@@ -82,6 +82,21 @@ services:
     volumes:
       - redis_data:/data
 
+  frontend:
+    image: node:20-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - api
+
 volumes:
   timescaledb_data:
   redis_data:
+  frontend_node_modules:

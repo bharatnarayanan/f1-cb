@@ -200,6 +200,8 @@ def list_paper_trades(status: str | None = None, db: Session = Depends(get_db)) 
                 "simulated_entry_price": t.simulated_entry_price,
                 "simulated_exit_price": t.simulated_exit_price,
                 "simulated_pnl_pct": t.simulated_pnl_pct,
+                "opened_at": t.opened_at.isoformat() if t.opened_at else None,
+                "closed_at": t.closed_at.isoformat() if t.closed_at else None,
             }
             for t in trades
         ]

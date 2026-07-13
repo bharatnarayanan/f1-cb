@@ -170,7 +170,9 @@ def test_list_paper_trades(client, fake_db_session):
     response = client.get("/api/v1/paper-trades")
 
     assert response.status_code == 200
-    assert len(response.json()["paper_trades"]) == 1
+    trades = response.json()["paper_trades"]
+    assert len(trades) == 1
+    assert "opened_at" in trades[0]  # needed by the frontend equity curve chart
 
 
 def test_open_paper_trade_invalid_recommendation_id(client):

@@ -383,6 +383,50 @@ proposed, approved as-is):
       subtraction crashed on a real paper-trade close. Fixed by casting
       to `float` at the DB-read boundary in `src/routes/paper_trades.py`.
 
+## Phase 7 (UI + Dashboard, Pass 1) — new decisions
+
+Proposed as a two-pass split and confirmed with you before building:
+
+51. **Login is deliberately NOT built this pass** — `docs/ui_wireframes.md`
+    includes a Login screen, but no auth backend exists (Phase 5
+    specifically avoided building one, seeding a single founder user
+    instead). The dashboard loads directly against the API with no auth
+    wall — matches this tool's own framing (docs/CLAUDE.md section 10:
+    "personal decision-support tool, not a distributed advisory product").
+    Login stays deferred to a future pass if real auth is ever wanted.
+52. **Pass 1 scope is the 3 highest-value screens**: Dashboard home
+    (category tabs + horizon filter + recommendation cards), the
+    collapsible reasoning-tree deep-dive, and Paper Trading (open
+    positions + Recharts equity curve). Strategy Marketplace UI, backtest
+    result view, trade journal UI, watchlist/risk settings UI, and alerts
+    settings UI are deferred to a future pass — all already have working
+    backend APIs from Phases 4-6, they just don't have a screen yet.
+53. **TanStack Query (`@tanstack/react-query`) added for API data
+    fetching/caching** — not in docs/CLAUDE.md's stack table (which only
+    locks React + TypeScript + Vite + Recharts), but a small, standard,
+    well-established addition rather than hand-rolling fetch/loading-state
+    plumbing across three screens. Flagged for visibility in the Phase 7
+    proposal, not treated as a stack conflict needing separate approval.
+54. **Two small backend gaps found while building the frontend, fixed
+    inline (not new forks — natural extensions of already-approved
+    scope):** `GET /api/v1/recommendations` (list) and
+    `GET /api/v1/recommendations/{id}` (detail) didn't exist — only the
+    creating `POST` did, and the dashboard needs something to list.
+    `POST /api/v1/recommendations/{symbol}`'s response was also missing
+    the new recommendation's `id`, and `GET /api/v1/paper-trades` was
+    missing `opened_at`/`closed_at`, both needed for the frontend to link
+    into the deep-dive view and build a real chronological equity curve.
+55. **No browser-automation tool is available in this environment** — every
+    other verification method was used (`tsc -b` typecheck, `vite build`
+    production build, dev server boot + HTML/module serving confirmed via
+    curl, CORS headers confirmed present against the real backend), but
+    nobody has visually clicked through the rendered UI yet. Said
+    explicitly rather than claimed as done — see docs/CLAUDE.md's own
+    working-style rule on this.
+56. **`frontend` service added to `docker-compose.yml`** (`node:20-slim`,
+    `npm install && npm run dev`, port 5173) — CLAUDE.md's own
+    orchestration list already named it as part of the target stack.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

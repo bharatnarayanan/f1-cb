@@ -134,6 +134,64 @@ def test_surfaces_400_when_not_enough_candles(client, fake_market_client):
     assert response.status_code == 400
 
 
+def test_create_response_includes_the_recommendation_id(client):
+    response = client.post("/api/v1/recommendations/NIFTY 50")
+
+    assert response.status_code == 200
+    assert "id" in response.json()["recommendation"]
+
+
+def test_list_recommendations(client, fake_db_session):
+    from src.db.models import Recommendation
+
+    row = Recommendation(
+        id=uuid.uuid4(), category="tactical", symbol="NSE:NIFTY 50", action="BUY_CE",
+        confidence_score=70.0, risk_score=20.0, conviction_score=63.0,
+        rationale={}, vix_regime_at_creation="normal", status="active",
+        created_at=datetime.now(),
+    )
+    fake_db_session.execute.return_value.scalars.return_value.all.return_value = [row]
+
+    response = client.get("/api/v1/recommendations")
+
+    assert response.status_code == 200
+    body = response.json()["recommendations"]
+    assert len(body) == 1
+    assert body[0]["symbol"] == "NSE:NIFTY 50"
+
+
+def test_get_recommendation_detail(client, fake_db_session):
+    from src.db.models import Recommendation
+
+    rec_id = uuid.uuid4()
+    row = Recommendation(
+        id=rec_id, category="tactical", symbol="NSE:NIFTY 50", action="BUY_CE",
+        confidence_score=70.0, risk_score=20.0, conviction_score=63.0,
+        rationale={"pattern": {"type": "engulfing"}}, vix_regime_at_creation="normal", status="active",
+        created_at=datetime.now(),
+    )
+    fake_db_session.get.return_value = row
+
+    response = client.get(f"/api/v1/recommendations/{rec_id}")
+
+    assert response.status_code == 200
+    assert response.json()["rationale"]["pattern"]["type"] == "engulfing"
+
+
+def test_get_recommendation_not_found(client, fake_db_session):
+    fake_db_session.get.return_value = None
+
+    response = client.get(f"/api/v1/recommendations/{uuid.uuid4()}")
+
+    assert response.status_code == 400
+
+
+def test_get_recommendation_invalid_id(client):
+    response = client.get("/api/v1/recommendations/not-a-uuid")
+
+    assert response.status_code == 400
+
+
 def test_alert_logs_reference_the_flushed_recommendation_id(client, fake_db_session):
     """Regression test for a live-caught bug: Recommendation.id (default=
     uuid.uuid4) is populated by SQLAlchemy at flush time, NOT at object
