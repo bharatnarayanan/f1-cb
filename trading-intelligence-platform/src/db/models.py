@@ -285,3 +285,65 @@ class StrategyFusion(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
+
+
+class PaperTrade(Base):
+    __tablename__ = "paper_trades"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    recommendation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    simulated_entry_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    simulated_exit_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    simulated_pnl_pct: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="open")
+    # Locked in at open time (migration 0005) — the exit rule this trade
+    # will be checked against on close. Not in the original schema.sql
+    # (paper_trades predates a rule-based exit); recomputing fresh on every
+    # close call instead would let the target/stop silently drift between
+    # open and close, which no real trade does — see
+    # src/engine/paper_trading.py's module docstring.
+    target_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    stop_loss_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    expiry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    opened_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TradeJournalEntry(Base):
+    __tablename__ = "trade_journal"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    recommendation_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("recommendations.id", ondelete="SET NULL"), nullable=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"), nullable=False)
+    outcome: Mapped[str] = mapped_column(String, nullable=False)  # win | loss | breakeven | not_taken
+    realized_pnl_pct: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
+    observation: Mapped[str | None] = mapped_column(String, nullable=True)
+    logged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+
+dispatch_status_enum = PGEnum(
+    "pending", "sent", "failed",
+    name="dispatch_status",
+    create_type=False,
+)
+
+
+class AlertLog(Base):
+    __tablename__ = "alerts_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    recommendation_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("recommendations.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String, nullable=False)  # telegram | email | dashboard
+    dispatch_status: Mapped[str] = mapped_column(dispatch_status_enum, nullable=False, default="pending")
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

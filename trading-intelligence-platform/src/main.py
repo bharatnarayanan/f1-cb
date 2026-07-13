@@ -27,7 +27,7 @@ from src.market_data.exceptions import (
     MarketDataInvalidRequest,
     MarketDataUnavailable,
 )
-from src.routes import market, recommendations, scan, strategies
+from src.routes import journal, market, paper_trades, recommendations, scan, strategies
 
 SAFETY_NOTICE = (
     "Read-only market data. No order placement. No real-money execution "
@@ -110,6 +110,8 @@ app.include_router(market.router)
 app.include_router(scan.router)
 app.include_router(recommendations.router)
 app.include_router(strategies.router)
+app.include_router(paper_trades.router)
+app.include_router(journal.router)
 
 
 @app.get("/health")

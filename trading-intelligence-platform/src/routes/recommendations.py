@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.alerts.dispatcher import dispatch_alerts
 from src.config import Settings, get_settings
 from src.db.models import Recommendation, SectorIndexRecord, WatchlistConstituent
 from src.db.session import get_db
@@ -167,8 +168,16 @@ def create_recommendation(
         rationale=draft.rationale,
         vix_regime_at_creation=vix_regime,
     )
+    db.add(row)
+    db.flush()  # populate row.id (default=uuid.uuid4 fires at flush, not construction) for the AlertLog FK below
+    # Dispatched before commit so the Recommendation + every AlertLog row
+    # (one per channel — F6.2) land in the same transaction. Delivery
+    # failures never raise here: dispatch_alerts records dispatch_status
+    # honestly per channel and always returns, so a missing Telegram/SMTP
+    # config never blocks a valid, fully-scored recommendation from saving.
+    alert_logs = dispatch_alerts(row, db, settings)
+
     try:
-        db.add(row)
         db.commit()
     except SQLAlchemyError:
         db.rollback()
@@ -187,4 +196,5 @@ def create_recommendation(
             "conviction_score": draft.conviction_score,
             "rationale": draft.rationale,
         },
+        "alerts": [{"channel": log.channel, "dispatch_status": log.dispatch_status} for log in alert_logs],
     }

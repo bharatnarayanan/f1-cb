@@ -47,12 +47,14 @@ class Settings(BaseSettings):
     # src/market_data/factory.py. ---
     data_mode: Literal["sample", "live"] = Field(default="sample", alias="DATA_MODE")
 
-    # --- Alerts ---
+    # --- Alerts (Phase 6) ---
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
+    telegram_chat_id: str | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
     smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_user: str | None = Field(default=None, alias="SMTP_USER")
     smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    alert_email_to: str | None = Field(default=None, alias="ALERT_EMAIL_TO")
 
     # --- LLM (rationale narration + strategy-marketplace extraction ONLY) ---
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")

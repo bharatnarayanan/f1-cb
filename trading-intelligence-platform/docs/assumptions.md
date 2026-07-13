@@ -332,6 +332,57 @@ proposed, approved as-is):
     worked example, seeded at `status="extracted"` (ready to backtest via
     the API; migrations don't call live backtest logic).
 
+## Phase 6 (Execution + Alerts) — new decisions
+
+Two scope forks confirmed with you directly before building (plan
+proposed, approved as-is):
+
+46. **Paper trades need a target/stop/exit rule, and none is defined
+    anywhere in the spec** — Phase 4 deliberately left Recommendation's
+    `entry_price`/`stop_loss`/`target_price` unset (#33, no option-chain
+    data). `src/engine/paper_trading.py`'s `resolve_exit_rule` is a new
+    documented heuristic: reuse Phase 3's support/resistance levels (the
+    nearest favorable level as target, nearest adverse level as stop,
+    falling back to a ±1%/±0.5% band when no S/R level exists on a side)
+    plus Phase 3's negation-window prediction as a max-hold-time fallback
+    — a trade force-closes at market if the setup's predicted negation
+    window passes before target or stop is hit. Resolved ONCE at open
+    time and stored on the row (migration 0005 adds `target_price`/
+    `stop_loss_price`/`expiry_at` to `paper_trades`, not in the original
+    schema) — never recomputed on close, so it can't silently drift.
+47. **Telegram/email alert dispatch is built and mocked-tested, not
+    live-tested** — no `TELEGRAM_BOT_TOKEN`/SMTP credentials configured in
+    this environment, same posture as Claude/live-Kite before it. Every
+    dispatch attempt records `dispatch_status` honestly (`sent` only on
+    real success, `failed` otherwise — never faked). `python-telegram-bot`
+    v20+ is fully async; `src/alerts/telegram.py` wraps the one call site
+    with `asyncio.run()` rather than converting routes to async, keeping
+    this codebase's existing synchronous-route convention intact.
+48. **The dashboard alert channel has no real destination yet** — no
+    frontend exists (that's Phase 7). Writing the `alerts_log` row with
+    `dispatch_status="sent"` immediately IS its delivery: once a dashboard
+    exists, that table is its data source, not a placeholder standing in
+    for a channel that doesn't work yet.
+49. **The trade-journal feedback loop ships as logging only.** The actual
+    Bayesian pattern/negation weight-update job (docs/CLAUDE.md section 9)
+    needs the scheduled `worker` service, which no phase has built yet —
+    consistent with every prior phase's stance on the same gap. Explicitly
+    flagged as deferred, not silently dropped.
+50. **Two real bugs were caught by live end-to-end testing that fully-
+    mocked unit tests had missed**, both fixed with regression tests added
+    directly against the failure mode (verified by reverting each fix and
+    confirming the new test fails, per this repo's standard practice):
+    - `Recommendation.id` (`default=uuid.uuid4`) is populated by
+      SQLAlchemy at flush time, not object construction — dispatching
+      alerts before `db.flush()` left every `AlertLog.recommendation_id`
+      `None`, violating `alerts_log`'s NOT NULL constraint at commit.
+      Fixed by flushing before dispatch in
+      `src/routes/recommendations.py`.
+    - Postgres `Numeric` columns come back as `decimal.Decimal`, which
+      can't mix with `float` in arithmetic — `compute_pnl_pct`'s
+      subtraction crashed on a real paper-trade close. Fixed by casting
+      to `float` at the DB-read boundary in `src/routes/paper_trades.py`.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

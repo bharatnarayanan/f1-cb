@@ -307,6 +307,11 @@ CREATE TABLE paper_trades (
     simulated_exit_price  NUMERIC(12, 2),
     simulated_pnl_pct     NUMERIC(6, 2),
     status                TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    -- target_price/stop_loss_price/expiry_at added in migration 0005 (F6.1)
+    -- — locked in at open time, see that migration's docstring.
+    target_price          NUMERIC(12, 2),
+    stop_loss_price       NUMERIC(12, 2),
+    expiry_at             TIMESTAMPTZ,
     opened_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     closed_at            TIMESTAMPTZ
 );

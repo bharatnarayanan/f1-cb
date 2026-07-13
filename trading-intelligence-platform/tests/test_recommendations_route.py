@@ -6,6 +6,7 @@ narration deterministically returns its "not configured" placeholder — see
 tests/test_narration.py for narration's own behavior under a real key.
 """
 
+import uuid
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -131,3 +132,38 @@ def test_surfaces_400_when_not_enough_candles(client, fake_market_client):
     response = client.post("/api/v1/recommendations/NIFTY 50")
 
     assert response.status_code == 400
+
+
+def test_alert_logs_reference_the_flushed_recommendation_id(client, fake_db_session):
+    """Regression test for a live-caught bug: Recommendation.id (default=
+    uuid.uuid4) is populated by SQLAlchemy at flush time, NOT at object
+    construction (confirmed: `Recommendation(...).id` is None right after
+    construction) — dispatch_alerts must run AFTER db.flush(), or every
+    AlertLog.recommendation_id stays None and violates alerts_log's NOT
+    NULL constraint at commit. A fully-mocked db.flush() is a no-op, so
+    this test simulates real flush behavior explicitly (assigning an id on
+    flush) — a plain MagicMock alone would not have caught this.
+    """
+    added_objects = []
+
+    def _add(obj):
+        added_objects.append(obj)
+
+    def _flush():
+        for obj in added_objects:
+            if getattr(obj, "id", None) is None:
+                obj.id = uuid.uuid4()
+
+    fake_db_session.add.side_effect = _add
+    fake_db_session.flush.side_effect = _flush
+
+    response = client.post("/api/v1/recommendations/NIFTY 50")
+
+    assert response.status_code == 200
+    from src.db.models import AlertLog, Recommendation
+
+    recommendation = next(obj for obj in added_objects if isinstance(obj, Recommendation))
+    alert_logs = [obj for obj in added_objects if isinstance(obj, AlertLog)]
+    assert alert_logs, "expected AlertLog rows to have been added"
+    assert recommendation.id is not None
+    assert all(log.recommendation_id == recommendation.id for log in alert_logs)
