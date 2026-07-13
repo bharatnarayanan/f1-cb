@@ -1,7 +1,12 @@
 -- Trading Intelligence Platform — TimescaleDB schema (PostgreSQL 15 + TimescaleDB extension)
 -- Mirrors docs/buildspec.json -> tech.database and docs/architecture.md.
--- Managed via Alembic in the real app; this file is the canonical reference
--- schema and the seed target for local `docker compose up` / psql bootstrap.
+--
+-- Reference only past migration 0001: this file documents the CURRENT full
+-- desired schema, hand-kept in sync with every migration, but only
+-- alembic/versions/0001_initial_schema.py executes it verbatim (against a
+-- truly fresh database). Every migration after 0001 carries its own DDL —
+-- see alembic/versions/0002_multi_timeframe_aggregates.py's docstring for
+-- why 0001 itself must not be edited again once applied.
 --
 -- READ-ONLY MARKET DATA BOUNDARY: nothing in this schema models an order,
 -- a fill against a real broker, or a funded position. `paper_trades` is
@@ -124,6 +129,74 @@ FROM candles
 WHERE timeframe = '5m'
 GROUP BY symbol, bucket
 WITH NO DATA;
+
+-- 10m/30m/2h/3h added in migration 0002 (F3.3, multi-timeframe aggregation)
+-- — same shape as candles_15m/candles_1h above.
+CREATE MATERIALIZED VIEW candles_10m
+WITH (timescaledb.continuous) AS
+SELECT symbol,
+       time_bucket('10 minutes', ts) AS bucket,
+       first(open, ts)  AS open,
+       max(high)        AS high,
+       min(low)         AS low,
+       last(close, ts)  AS close,
+       sum(volume)      AS volume
+FROM candles
+WHERE timeframe = '5m'
+GROUP BY symbol, bucket
+WITH NO DATA;
+
+CREATE MATERIALIZED VIEW candles_30m
+WITH (timescaledb.continuous) AS
+SELECT symbol,
+       time_bucket('30 minutes', ts) AS bucket,
+       first(open, ts)  AS open,
+       max(high)        AS high,
+       min(low)         AS low,
+       last(close, ts)  AS close,
+       sum(volume)      AS volume
+FROM candles
+WHERE timeframe = '5m'
+GROUP BY symbol, bucket
+WITH NO DATA;
+
+CREATE MATERIALIZED VIEW candles_2h
+WITH (timescaledb.continuous) AS
+SELECT symbol,
+       time_bucket('2 hours', ts) AS bucket,
+       first(open, ts)  AS open,
+       max(high)        AS high,
+       min(low)         AS low,
+       last(close, ts)  AS close,
+       sum(volume)      AS volume
+FROM candles
+WHERE timeframe = '5m'
+GROUP BY symbol, bucket
+WITH NO DATA;
+
+CREATE MATERIALIZED VIEW candles_3h
+WITH (timescaledb.continuous) AS
+SELECT symbol,
+       time_bucket('3 hours', ts) AS bucket,
+       first(open, ts)  AS open,
+       max(high)        AS high,
+       min(low)         AS low,
+       last(close, ts)  AS close,
+       sum(volume)      AS volume
+FROM candles
+WHERE timeframe = '5m'
+GROUP BY symbol, bucket
+WITH NO DATA;
+
+-- Refresh policies (all six views) — applied by migration 0002, not by
+-- this file (add_continuous_aggregate_policy isn't idempotent-safe to
+-- re-run, so it's not part of the fresh-install path 0001 executes).
+-- SELECT add_continuous_aggregate_policy('candles_10m', start_offset => INTERVAL '1 day',   end_offset => INTERVAL '10 minutes', schedule_interval => INTERVAL '10 minutes');
+-- SELECT add_continuous_aggregate_policy('candles_15m', start_offset => INTERVAL '1 day',   end_offset => INTERVAL '15 minutes', schedule_interval => INTERVAL '15 minutes');
+-- SELECT add_continuous_aggregate_policy('candles_30m', start_offset => INTERVAL '2 days',  end_offset => INTERVAL '30 minutes', schedule_interval => INTERVAL '30 minutes');
+-- SELECT add_continuous_aggregate_policy('candles_1h',  start_offset => INTERVAL '3 days',  end_offset => INTERVAL '1 hour',     schedule_interval => INTERVAL '1 hour');
+-- SELECT add_continuous_aggregate_policy('candles_2h',  start_offset => INTERVAL '5 days',  end_offset => INTERVAL '2 hours',    schedule_interval => INTERVAL '2 hours');
+-- SELECT add_continuous_aggregate_policy('candles_3h',  start_offset => INTERVAL '7 days',  end_offset => INTERVAL '3 hours',    schedule_interval => INTERVAL '3 hours');
 
 -- Open interest / Greeks snapshots per strike.
 CREATE TABLE oi_snapshots (

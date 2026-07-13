@@ -27,7 +27,7 @@ from src.market_data.exceptions import (
     MarketDataInvalidRequest,
     MarketDataUnavailable,
 )
-from src.routes import market
+from src.routes import market, scan
 
 SAFETY_NOTICE = (
     "Read-only market data. No order placement. No real-money execution "
@@ -107,6 +107,7 @@ def _sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JSONRes
 #   from src.routes import auth, recommendations, journal, strategies
 #   app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(market.router)
+app.include_router(scan.router)
 
 
 @app.get("/health")

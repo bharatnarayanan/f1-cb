@@ -145,6 +145,70 @@ match your intent.
     so a `DATA_MODE` typo fails loudly at startup instead of silently
     falling through to the live-Kite branch in `src/market_data/factory.py`.
 
+## Phase 3 (Core Engine) — new decisions
+
+20. **TA-Lib's C library is installed from its official prebuilt `.deb`**
+    (`Dockerfile`, arch-detected via `dpkg --print-architecture`), not
+    compiled from the old sourceforge 0.4.0 source tarball — that source
+    fails to build on Debian trixie's gcc 14 (C23 makes an ABI mismatch in
+    the generated Cython wrapper a hard error). `requirements.txt` pins the
+    matching `TA-Lib==0.7.0` Python wrapper (also newer than originally
+    planned — 0.4.28 predates the C23 fix).
+21. **`pandas-ta` is deliberately NOT a dependency**, despite docs/CLAUDE.md
+    section 4 listing "TA-Lib + pandas-ta." Confirmed with you directly:
+    pandas-ta's PyPI releases now require Python 3.12+ (new maintainers,
+    new versioning), incompatible with this repo's locked Python 3.11.
+    TA-Lib alone covers every Phase 3 need — CDL* candlestick functions now
+    (`src/engine/patterns.py`), RSI/ATR for confidence scoring later.
+22. **Migration 0001 is now a frozen, one-time snapshot; 0002+ are
+    incremental deltas.** `alembic/versions/0001_initial_schema.py` used to
+    be described as re-runnable against `database/schema.sql`, but it's
+    already been applied to a real database — editing it again after the
+    fact is not safe Alembic practice. `0002_multi_timeframe_aggregates.py`
+    is the first migration under the new convention: it carries its own DDL
+    rather than re-executing schema.sql. `database/schema.sql` is still
+    hand-kept in sync as the full current-state reference, but only 0001
+    executes it verbatim (see the new header comment).
+23. **Negation heuristic's base candles-to-negate table**
+    (`src/engine/negation.py`) is a documented starting default (engulfing
+    3.0, three_inside/three_outside 4.0, harami 5.0, doji 2.5, pin_bar 3.5),
+    scaled by VIX regime and timeframe — no trade-journal history exists
+    yet to derive it from real outcomes. Swap-in point for backtest-derived
+    values or the v1.1 LSTM model is `model_version` (already
+    `"heuristic-v1"` per docs/CLAUDE.md section 4), no schema change needed.
+24. **"Pin bar" has no native TA-Lib function**, so it's detected with a
+    hand-rolled geometric rule (small body relative to full range, a
+    dominant wick at least 2.5x the body) — a standard price-action
+    definition. Thresholds started looser (0.35 body-to-range, 2.0x wick)
+    but were tightened after a real sample-mode scan showed ~15% of
+    ordinary candles false-flagging as pin bars; real calibration is a
+    trade-journal feedback-loop job (later phase), not further hand-tuning.
+25. **TA-Lib's doji-family functions need ~11 bars of internal averaging
+    lookback before they'll flag anything** (confirmed empirically) — the
+    5-bar floor I initially picked was wrong and would have silently never
+    detected a doji on a short candle series. `_MIN_BARS_FOR_DETECTION` in
+    `src/engine/patterns.py` is now 15.
+26. **`GET /api/v1/scan/{symbol}` is a Phase 3 stand-in for the scheduled
+    `worker` service** (not built yet), same pattern as `/vix` standing in
+    for scheduled VIX ingestion (#17 above). It chains pattern detection ->
+    negation -> support/resistance across `SCAN_TIMEFRAMES = ["5m", "15m",
+    "1h"]` and persists every result. Calling it repeatedly with
+    overlapping lookback windows can persist duplicate rows — acceptable
+    for demonstrating the engine end-to-end, not for production polling;
+    the real worker will dedupe by only scanning newly-closed candles.
+27. **Support/resistance is computed per-timeframe on whatever candles are
+    passed in** (`src/engine/support_resistance.py`), not the raw session's
+    "D, 4h, 1h, 30m" cross-timeframe confluence — there's no daily/4h
+    aggregate or long-history ingestion yet (sample mode's scan window is
+    hours, not weeks). True cross-timeframe SR confluence is future work
+    once real historical depth exists.
+28. **`resolve_instrument_token` (`src/market_data/instruments.py`) only
+    resolves symbols present in `MarketDataClient.get_instruments()`** — in
+    sample mode that's NIFTY 50 / NIFTY BANK / INDIA VIX only
+    (`SampleMarketDataClient`'s fixed instrument list). Scanning any other
+    symbol in sample mode fails with a 400 until the sample instrument list
+    is extended or `DATA_MODE=live` is used.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

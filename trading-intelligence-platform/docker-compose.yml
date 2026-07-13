@@ -1,11 +1,11 @@
 # Local dev compose for the Trading Intelligence Platform.
-# `api` is wired to real code (src/main.py, Phase 2 Foundation Layer) — the
-# `worker` (pattern/negation/scoring pipeline) and `frontend` services
-# described in docs/architecture.md are later-phase work; see
-# docs/deployment_guide.md.
+# `api` is wired to real code (src/main.py) — the `worker` (scheduled
+# pattern/negation/scoring pipeline) and `frontend` services described in
+# docs/architecture.md are later-phase work; see docs/deployment_guide.md.
 #
-# No Dockerfile yet — `api` installs requirements.txt inline against the
-# official python image so `docker compose up` works out of the box.
+# `api` builds from ./Dockerfile (TA-Lib's C library needs compiling —
+# python:3.11-slim's apt repos don't carry it, see Dockerfile's own
+# comment) rather than an inline python:3.11-slim + pip install.
 #
 # READ-ONLY REMINDER: KITE_API_KEY / KITE_ACCESS_TOKEN must only ever be
 # provisioned with read-only market-data scope. No service in this file
@@ -13,7 +13,9 @@
 
 services:
   api:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile
     working_dir: /app
     command: >
       sh -c "pip install --no-cache-dir -r requirements.txt &&

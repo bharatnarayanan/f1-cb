@@ -1,10 +1,19 @@
-# Trading Intelligence Platform — Phase 2 (Foundation Layer) dependencies.
-# Pattern-detection/negation/scoring libs (TA-Lib, pandas-ta, vectorbt) land
-# in the phase that builds the worker pipeline — not needed yet.
+# Trading Intelligence Platform dependencies.
 
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic-settings==2.5.2
+
+# Pattern detection / negation / S-R engine (Phase 3, docs/CLAUDE.md section 4).
+# pandas-ta deliberately NOT included: its PyPI releases now require Python
+# 3.12+ (the project changed maintainers and versioning), incompatible with
+# this repo's locked Python 3.11 (docs/CLAUDE.md section 4). Flagged and
+# confirmed — TA-Lib alone covers everything Phase 3 needs (CDL* candlestick
+# patterns, RSI/ATR for later confidence scoring). See docs/assumptions.md.
+numpy==1.26.4
+pandas==2.1.4
+TA-Lib==0.7.0
+scipy==1.11.4
 
 # Zerodha Kite Connect — READ-ONLY usage only, see docs/CLAUDE.md section 2.
 kiteconnect==5.2.0
