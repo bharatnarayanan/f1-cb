@@ -82,6 +82,69 @@ match your intent.
     marked `source_type: "user_rule"`, so the marketplace isn't empty on
     day one.
 
+## Phase 2 (Foundation Layer) — new decisions
+
+13. **Alembic, not docker-compose's `docker-entrypoint-initdb.d` mount, now
+    owns schema creation.** Both applied the identical `database/schema.sql`,
+    so a fresh volume would apply it twice and the second pass would fail
+    on "relation already exists." Removed the raw mount from
+    `docker-compose.yml`; the `api` service now runs `alembic upgrade head`
+    on startup (`alembic/versions/0001_initial_schema.py` executes
+    `database/schema.sql` verbatim — still the single canonical DDL source,
+    just applied through Alembic as docs/CLAUDE.md's tech-stack table
+    already specified).
+14. **Fixed a latent bug in `database/schema.sql`** surfaced by running it
+    through Alembic for the first time: `CREATE MATERIALIZED VIEW ...
+    WITH (timescaledb.continuous) AS ...` defaults to `WITH DATA`, and
+    TimescaleDB refuses to run that initial materialization inside a
+    transaction block — which Alembic always wraps migrations in. `psql`
+    running the file directly (the old docker-compose path) never hit this
+    because it doesn't wrap a multi-statement script in one transaction.
+    Added `WITH NO DATA` to both `candles_15m` and `candles_1h`; there's no
+    candle data to backfill yet regardless. The worker pipeline (later
+    phase) adds a refresh policy once ingestion is live.
+15. **Only two ORM models exist so far**: `AuditLog` and `IndiaVixSnapshot`
+    (`src/db/models.py`) — the tables Phase 2's own code touches. Every
+    other table in `database/schema.sql` (patterns, recommendations,
+    strategies, ...) stays schema-only until the phase that builds routes
+    or jobs against it defines its model, per docs/CLAUDE.md's "small,
+    testable modules" convention.
+16. **`GET /api/v1/market/quote/{symbol}`** caches the on-demand Kite quote
+    in Redis for 5 seconds (`DEFAULT_QUOTE_TTL_SECONDS`, `src/cache/redis_client.py`)
+    — a number I picked (not specified anywhere) to keep repeated dashboard
+    refreshes from burning Zerodha's rate limit while still feeling live.
+    Easy to retune later.
+17. **`GET /api/v1/market/vix`** fetches a live India VIX quote, computes
+    the regime (thresholds from #7 above), and writes a row to
+    `india_vix_snapshots` on every call. This is a Phase 2 stand-in for the
+    worker pipeline's scheduled VIX ingestion (later phase) — it proves the
+    Zerodha -> scoring-logic -> TimescaleDB path end to end, but isn't the
+    real recurring ingestion job.
+
+18. **`DATA_MODE` env var (default `sample`) picks the market-data source.**
+    Zerodha's daily access token kept expiring mid-build, blocking Phase 2
+    verification. Added `SampleMarketDataClient`
+    (`src/market_data/sample_client.py`) — an in-memory random walk seeded
+    from realistic NIFTY/BANKNIFTY/VIX anchors, no network calls — as the
+    default so the whole stack (DB, Redis, FastAPI, tests) is provable
+    end-to-end without a live Kite login. `DATA_MODE=live` switches
+    `src/market_data/factory.py` back to the real `KiteMarketDataClient`
+    (and still fails loudly if Kite credentials are missing in that mode).
+    `/health`, `/api/v1/market/quote/{symbol}`, and `/api/v1/market/vix`
+    all echo `data_mode` in their response so sample data can never be
+    mistaken for real prices downstream. `scripts/kite_daily_login.py`
+    remains the on-ramp to `DATA_MODE=live` once a fresh token exists.
+
+19. **New `MarketDataInvalidRequest` exception (400)**, distinct from
+    `MarketDataAuthError` (401, bad credentials) and `MarketDataUnavailable`
+    (503, transient outage). Added after a code review found
+    `KiteMarketDataClient._call_with_retry` was retrying permanent Kite
+    errors (`InputException` bad symbol, `PermissionException` scope) as if
+    transient, then reporting them as a misleading 503. `data_mode` is also
+    now a `Literal["sample", "live"]` in `src/config.py` (was a bare `str`)
+    so a `DATA_MODE` typo fails loudly at startup instead of silently
+    falling through to the live-Kite branch in `src/market_data/factory.py`.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

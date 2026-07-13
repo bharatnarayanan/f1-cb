@@ -8,6 +8,7 @@ read-only market-data scope — see docs/CLAUDE.md section 2.
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +36,16 @@ class Settings(BaseSettings):
     # scope; this codebase has no order-placement code path to use it.
     kite_api_key: str | None = Field(default=None, alias="KITE_API_KEY")
     kite_access_token: str | None = Field(default=None, alias="KITE_ACCESS_TOKEN")
+
+    # --- Data source mode: "sample" (default, no Kite creds needed — an
+    # in-memory random-walk client) or "live" (real Zerodha Kite Connect,
+    # requires kite_api_key/kite_access_token). Phase 2 ships defaulting to
+    # sample so the stack is provable end-to-end before a daily Kite login
+    # has been done. Every route using market data reports this back.
+    # Literal (not str): a typo'd value must fail loudly at startup, not
+    # silently fall through to the live-Kite branch in
+    # src/market_data/factory.py. ---
+    data_mode: Literal["sample", "live"] = Field(default="sample", alias="DATA_MODE")
 
     # --- Alerts ---
     telegram_bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")

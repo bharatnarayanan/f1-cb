@@ -93,6 +93,10 @@ CREATE TABLE candles (
 SELECT create_hypertable('candles', 'ts', if_not_exists => TRUE);
 CREATE INDEX idx_candles_symbol_ts ON candles (symbol, ts DESC);
 
+-- WITH NO DATA: TimescaleDB refuses an initial WITH DATA materialization
+-- inside a transaction block (which Alembic always runs migrations in), and
+-- there's no candle data to backfill yet anyway. The worker pipeline
+-- (later phase) adds a refresh policy once ingestion is live.
 CREATE MATERIALIZED VIEW candles_15m
 WITH (timescaledb.continuous) AS
 SELECT symbol,
@@ -104,7 +108,8 @@ SELECT symbol,
        sum(volume)      AS volume
 FROM candles
 WHERE timeframe = '5m'
-GROUP BY symbol, bucket;
+GROUP BY symbol, bucket
+WITH NO DATA;
 
 CREATE MATERIALIZED VIEW candles_1h
 WITH (timescaledb.continuous) AS
@@ -117,7 +122,8 @@ SELECT symbol,
        sum(volume)      AS volume
 FROM candles
 WHERE timeframe = '5m'
-GROUP BY symbol, bucket;
+GROUP BY symbol, bucket
+WITH NO DATA;
 
 -- Open interest / Greeks snapshots per strike.
 CREATE TABLE oi_snapshots (

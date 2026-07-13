@@ -1,12 +1,11 @@
-# Local dev compose for the scaffold produced by the F1 session
-# (docs/buildspec.json). Only `api` is wired to real code right now
-# (src/main.py) — the `worker` (pattern/negation/scoring pipeline) and
-# `frontend` services described in docs/architecture.md are CB build-phase
-# work, not part of this scaffold; see docs/deployment_guide.md.
+# Local dev compose for the Trading Intelligence Platform.
+# `api` is wired to real code (src/main.py, Phase 2 Foundation Layer) — the
+# `worker` (pattern/negation/scoring pipeline) and `frontend` services
+# described in docs/architecture.md are later-phase work; see
+# docs/deployment_guide.md.
 #
-# No Dockerfile yet either — `api` installs its (small) dependency set
-# inline against the official python image so `docker compose up` works
-# out of the box against just this scaffold.
+# No Dockerfile yet — `api` installs requirements.txt inline against the
+# official python image so `docker compose up` works out of the box.
 #
 # READ-ONLY REMINDER: KITE_API_KEY / KITE_ACCESS_TOKEN must only ever be
 # provisioned with read-only market-data scope. No service in this file
@@ -17,7 +16,8 @@ services:
     image: python:3.11-slim
     working_dir: /app
     command: >
-      sh -c "pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic-settings &&
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             alembic upgrade head &&
              uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
@@ -28,9 +28,17 @@ services:
       REDIS_URL: redis://redis:6379/0
       KITE_API_KEY: ${KITE_API_KEY:-}
       KITE_ACCESS_TOKEN: ${KITE_ACCESS_TOKEN:-}
+      DATA_MODE: ${DATA_MODE:-sample}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./src:/app/src
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./database:/app/database
+      - ./requirements.txt:/app/requirements.txt
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
+      - ./scripts:/app/scripts
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -45,9 +53,13 @@ services:
       POSTGRES_DB: tip
     ports:
       - "5432:5432"
+    # Schema is applied by the `api` service's `alembic upgrade head` step
+    # (alembic/versions/0001_initial_schema.py runs database/schema.sql),
+    # not by a docker-entrypoint-initdb.d mount — a fresh volume would
+    # otherwise get the schema applied twice (once here, once by Alembic)
+    # and the second application would fail on "relation already exists".
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tip"]
       interval: 5s

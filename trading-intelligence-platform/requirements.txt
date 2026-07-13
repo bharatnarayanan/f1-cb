@@ -1,0 +1,24 @@
+# Trading Intelligence Platform — Phase 2 (Foundation Layer) dependencies.
+# Pattern-detection/negation/scoring libs (TA-Lib, pandas-ta, vectorbt) land
+# in the phase that builds the worker pipeline — not needed yet.
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic-settings==2.5.2
+
+# Zerodha Kite Connect — READ-ONLY usage only, see docs/CLAUDE.md section 2.
+kiteconnect==5.2.0
+
+# Database
+sqlalchemy==2.0.35
+alembic==1.13.3
+psycopg[binary]==3.2.3
+
+# Cache
+redis==5.0.8
+
+# Tests
+pytest==8.3.3
+pytest-mock==3.14.0
+httpx==0.27.2
+fakeredis==2.25.1
