@@ -112,3 +112,37 @@ export interface JournalEntry {
   realized_pnl_pct: number | null;
   observation: string | null;
 }
+
+// Mirrors src/routes/settings.py (Phase 7 Pass 2b).
+export interface WatchlistConstituentSummary {
+  symbol: string;
+  display_name: string;
+  sector: string | null;
+  is_active: boolean;
+}
+
+export interface SectorIndexSummary {
+  symbol: string;
+  display_name: string;
+  is_active: boolean;
+}
+
+export type ExecutionMode = "paper" | "live_manual";
+
+export interface RiskSettings {
+  vix_normal_max: number;
+  vix_elevated_max: number;
+  vix_high_max: number;
+  suppress_tactical_on_extreme: boolean;
+  expiry_day_dampening: boolean;
+  max_daily_recommendations: number;
+  execution_mode: ExecutionMode;
+  updated_at: string | null;
+}
+
+export interface AlertsStatus {
+  telegram_configured: boolean;
+  email_configured: boolean;
+  dashboard_configured: boolean;
+  note: string;
+}

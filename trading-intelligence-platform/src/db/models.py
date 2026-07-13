@@ -347,3 +347,36 @@ class AlertLog(Base):
     channel: Mapped[str] = mapped_column(String, nullable=False)  # telegram | email | dashboard
     dispatch_status: Mapped[str] = mapped_column(dispatch_status_enum, nullable=False, default="pending")
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+execution_mode_enum = PGEnum(
+    "paper", "live_manual",
+    name="execution_mode",
+    create_type=False,
+)
+
+
+class RiskSettings(Base):
+    """One row per user (Phase 7 Pass 2b) — src/db/risk_settings.py resolves
+    this row's VIX thresholds in preference to the env-var defaults in
+    src/config.py wherever VIX regime is computed, so the settings screen
+    actually controls behavior rather than just displaying a number nobody
+    reads. execution_mode is constrained to exactly 'paper'/'live_manual'
+    at the DB enum level AND validated again at the API layer
+    (src/routes/settings.py) — docs/CLAUDE.md section 2 never allows a
+    third auto-execute mode (no live_algo, ever), even behind a setting.
+    """
+
+    __tablename__ = "risk_settings"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    vix_normal_max: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=15.0)
+    vix_elevated_max: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=20.0)
+    vix_high_max: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=30.0)
+    suppress_tactical_on_extreme: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    expiry_day_dampening: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    max_daily_recommendations: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
+    execution_mode: Mapped[str] = mapped_column(execution_mode_enum, nullable=False, default="paper")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )

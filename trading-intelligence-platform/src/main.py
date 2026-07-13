@@ -27,7 +27,7 @@ from src.market_data.exceptions import (
     MarketDataInvalidRequest,
     MarketDataUnavailable,
 )
-from src.routes import journal, market, paper_trades, recommendations, scan, strategies
+from src.routes import journal, market, paper_trades, recommendations, scan, settings, strategies
 
 SAFETY_NOTICE = (
     "Read-only market data. No order placement. No real-money execution "
@@ -101,17 +101,16 @@ def _sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JSONRes
     )
 
 
-# Route modules (auth, patterns, recommendations, journal, paper-trades,
-# strategies, alerts, risk-settings — see docs/api_routes.md) mount here as
-# later phases implement them:
-#   from src.routes import auth, recommendations, journal, strategies
-#   app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+# auth is the one route module from docs/api_routes.md still unbuilt — no
+# login/JWT system exists (docs/assumptions.md #36); every other route
+# below resolves the single seeded founder user instead (src/db/founder.py).
 app.include_router(market.router)
 app.include_router(scan.router)
 app.include_router(recommendations.router)
 app.include_router(strategies.router)
 app.include_router(paper_trades.router)
 app.include_router(journal.router)
+app.include_router(settings.router)
 
 
 @app.get("/health")

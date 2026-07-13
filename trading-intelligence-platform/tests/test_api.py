@@ -15,6 +15,12 @@ from fastapi.testclient import TestClient
 
 from sqlalchemy.exc import SQLAlchemyError
 
+# Route-level tests care about VIX regime classification given a price, not
+# how thresholds get resolved (src/db/risk_settings.py's own unit tests
+# cover that) — patched at the consuming module, matching this suite's
+# convention for external-boundary mocks (e.g. tests/test_narration.py).
+_DEFAULT_VIX_THRESHOLDS = (15.0, 20.0, 30.0)
+
 from src.cache.redis_client import RedisCache, get_redis_cache
 from src.config import Settings, get_settings
 from src.db.session import get_db
@@ -55,7 +61,7 @@ def fake_market_client():
 
 
 @pytest.fixture
-def client(fake_db_session, fake_market_client):
+def client(fake_db_session, fake_market_client, monkeypatch):
     def _override_get_db():
         yield fake_db_session
 
@@ -64,6 +70,10 @@ def client(fake_db_session, fake_market_client):
     # would give) would defeat caching, since nothing would ever be found on
     # a later request.
     shared_cache = RedisCache(fakeredis.FakeRedis(decode_responses=True))
+
+    monkeypatch.setattr(
+        "src.routes.market.get_vix_thresholds", lambda db, settings: _DEFAULT_VIX_THRESHOLDS
+    )
 
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_redis_cache] = lambda: shared_cache

@@ -17,7 +17,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
-from src.db.models import Strategy, StrategyBacktest, StrategyFusion, User
+from src.db.founder import get_founder
+from src.db.models import Strategy, StrategyBacktest, StrategyFusion
 from src.db.session import get_db
 from src.engine.backtest import run_backtest
 from src.engine.fusion import fuse_strategies
@@ -30,8 +31,6 @@ from src.market_data.factory import get_market_data_client
 from src.market_data.instruments import resolve_instrument_token
 
 router = APIRouter(prefix="/api/v1/strategies", tags=["strategies"])
-
-FOUNDER_EMAIL = "founder@local"  # seeded by alembic/versions/0004_seed_founder_strategy.py
 
 _UNDERLYING_TO_KITE_SYMBOL = {"NIFTY": "NIFTY 50", "BANKNIFTY": "NIFTY BANK"}
 _BACKTEST_LOOKBACK_DAYS = 5
@@ -48,16 +47,6 @@ class FuseStrategiesRequest(BaseModel):
     name: str
     base_strategy_id: str
     other_strategy_id: str
-
-
-def _get_founder(db: Session) -> User:
-    founder = db.execute(select(User).where(User.email == FOUNDER_EMAIL)).scalar_one_or_none()
-    if founder is None:
-        raise RuntimeError(
-            f"No founder user found (email={FOUNDER_EMAIL!r}) — "
-            "alembic/versions/0004_seed_founder_strategy.py should have seeded one."
-        )
-    return founder
 
 
 def _get_strategy_or_400(db: Session, strategy_id: str) -> Strategy:
@@ -77,7 +66,7 @@ def ingest_strategy(body: IngestStrategyRequest, db: Session = Depends(get_db), 
     if body.source_type not in ("text", "pseudocode", "pine_script", "video"):
         raise MarketDataInvalidRequest(f"unsupported source_type={body.source_type!r}")
 
-    founder = _get_founder(db)
+    founder = get_founder(db)
     strategy = Strategy(
         name=body.name,
         source_type=body.source_type,
@@ -213,7 +202,7 @@ def fuse(body: FuseStrategiesRequest, db: Session = Depends(get_db)) -> dict[str
     except ValueError as exc:
         raise MarketDataInvalidRequest(str(exc)) from exc
 
-    founder = _get_founder(db)
+    founder = get_founder(db)
     fused_strategy = Strategy(
         name=body.name,
         source_type="user_rule",

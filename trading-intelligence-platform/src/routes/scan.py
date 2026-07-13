@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
 from src.db.models import NegationPrediction, PatternDetected, SrLevelRecord
+from src.db.risk_settings import get_vix_thresholds
 from src.db.session import get_db
 from src.engine.aggregation import resample_candles
 from src.engine.negation import predict_negation
@@ -66,7 +67,8 @@ def run_scan(
 
     vix_quote = market.get_quote(["NSE:INDIA VIX"])
     vix_value = float(vix_quote["NSE:INDIA VIX"]["last_price"])
-    vix_regime = compute_vix_regime(vix_value, settings)
+    normal_max, elevated_max, high_max = get_vix_thresholds(db, settings)
+    vix_regime = compute_vix_regime(vix_value, normal_max, elevated_max, high_max)
 
     patterns_out: list[dict] = []
     negations_out: list[dict] = []

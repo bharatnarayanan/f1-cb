@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from src.alerts.dispatcher import dispatch_alerts
 from src.config import Settings, get_settings
 from src.db.models import Recommendation, SectorIndexRecord, WatchlistConstituent
+from src.db.risk_settings import get_vix_thresholds
 from src.db.session import get_db
 from src.engine.aggregation import resample_candles
 from src.engine.correlation import score_correlation
@@ -99,7 +100,8 @@ def create_recommendation(
 
     vix_quote = market.get_quote(["NSE:INDIA VIX"])
     vix_value = float(vix_quote["NSE:INDIA VIX"]["last_price"])
-    vix_regime = compute_vix_regime(vix_value, settings)
+    normal_max, elevated_max, high_max = get_vix_thresholds(db, settings)
+    vix_regime = compute_vix_regime(vix_value, normal_max, elevated_max, high_max)
 
     impulse = detect_impulse_move(base_candles)
     if impulse is not None:

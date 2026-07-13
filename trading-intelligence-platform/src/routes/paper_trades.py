@@ -17,7 +17,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.config import Settings, get_settings
-from src.db.models import PaperTrade, Recommendation, User
+from src.db.founder import get_founder
+from src.db.models import PaperTrade, Recommendation
 from src.db.session import get_db
 from src.engine.paper_trading import compute_pnl_pct, evaluate_exit, resolve_exit_rule
 from src.engine.scoring import SrContextLevel
@@ -29,8 +30,6 @@ from src.market_data.instruments import resolve_instrument_token
 
 router = APIRouter(prefix="/api/v1/paper-trades", tags=["paper-trades"])
 
-FOUNDER_EMAIL = "founder@local"  # seeded by alembic/versions/0004_seed_founder_strategy.py
-
 _ACTION_TO_DIRECTION = {"BUY_CE": "bullish", "BUY_PE": "bearish"}
 _SR_LOOKBACK_HOURS = 8
 
@@ -41,13 +40,6 @@ class OpenPaperTradeRequest(BaseModel):
 
 class ClosePaperTradeRequest(BaseModel):
     force: bool = False
-
-
-def _get_founder(db: Session) -> User:
-    founder = db.execute(select(User).where(User.email == FOUNDER_EMAIL)).scalar_one_or_none()
-    if founder is None:
-        raise RuntimeError(f"No founder user found (email={FOUNDER_EMAIL!r}) — check migration 0004 ran.")
-    return founder
 
 
 def _get_recommendation_or_400(db: Session, recommendation_id: str) -> Recommendation:
@@ -106,7 +98,7 @@ def open_paper_trade(
         except ValueError:
             expiry_at = None
 
-    founder = _get_founder(db)
+    founder = get_founder(db)
     trade = PaperTrade(
         recommendation_id=recommendation.id,
         user_id=founder.id,

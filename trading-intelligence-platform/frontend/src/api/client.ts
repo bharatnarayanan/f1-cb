@@ -1,4 +1,5 @@
 import type {
+  AlertsStatus,
   BacktestResult,
   IngestStrategyResponse,
   JournalEntry,
@@ -6,9 +7,12 @@ import type {
   PaperTrade,
   RecommendationDetail,
   RecommendationSummary,
+  RiskSettings,
+  SectorIndexSummary,
   StrategyDetail,
   StrategySourceType,
   StrategySummary,
+  WatchlistConstituentSummary,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -103,4 +107,34 @@ export function listJournalEntries() {
 
 export function logJournalOutcome(body: { recommendation_id?: string; outcome: JournalOutcome; realized_pnl_pct?: number; observation?: string }) {
   return request<JournalEntry>("/api/v1/journal", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getWatchlist() {
+  return request<{ constituents: WatchlistConstituentSummary[]; sectors: SectorIndexSummary[] }>("/api/v1/settings/watchlist");
+}
+
+export function toggleConstituent(symbol: string, isActive: boolean) {
+  return request<WatchlistConstituentSummary>(`/api/v1/settings/watchlist/constituents/${encodeURIComponent(symbol)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_active: isActive }),
+  });
+}
+
+export function toggleSector(symbol: string, isActive: boolean) {
+  return request<SectorIndexSummary>(`/api/v1/settings/watchlist/sectors/${encodeURIComponent(symbol)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_active: isActive }),
+  });
+}
+
+export function getRiskSettings() {
+  return request<RiskSettings>("/api/v1/settings/risk");
+}
+
+export function updateRiskSettings(body: Partial<RiskSettings>) {
+  return request<RiskSettings>("/api/v1/settings/risk", { method: "PUT", body: JSON.stringify(body) });
+}
+
+export function getAlertsStatus() {
+  return request<AlertsStatus>("/api/v1/settings/alerts");
 }

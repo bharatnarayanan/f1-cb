@@ -454,6 +454,65 @@ Proposed as a two-pass split and confirmed with you before building:
     automatically) at the exact point a user might otherwise expect a URL
     alone to be enough.
 
+## Phase 7 Pass 2b (Watchlist/Risk/Alerts Settings) — new decisions
+
+Confirmed while scoping, then built exactly as proposed:
+
+61. **VIX regime now reads the founder's `risk_settings` DB row in
+    preference to `src/config.py`'s env-var defaults** — `risk_settings`
+    existed in the schema since Phase 1 but had no ORM model, no route,
+    and nothing read it; every VIX-regime call site used env defaults
+    only. `compute_vix_regime` (`src/market_data/vix.py`) is now a pure
+    function taking explicit thresholds; `src/db/risk_settings.py`
+    resolves them (DB row if it exists, env fallback otherwise) and all
+    three call sites (`/vix`, `/scan`, `/recommendations`) were updated.
+    Migration `0006` seeds the founder's row with the exact values the env
+    defaults already had, so this ships without silently reclassifying
+    today's VIX regime.
+62. **Strike-selection rule overrides were NOT built** — confirmed before
+    starting: no table exists anywhere for this, and more importantly
+    nothing in the confidence-scoring engine accepts per-user overrides at
+    all yet (fixed constants). A settings screen for a knob the engine
+    can't turn would be misleading, not useful.
+63. **Alerts settings ships read-only** — confirmed before starting:
+    Telegram/email config stays env-var-only (`.env`, read once at
+    startup); the settings screen reports what's configured, it doesn't
+    let you change it. Making it live-editable would need a real DB-backed
+    config layer `src/alerts/*` reads from, and per-category alert toggles
+    (also requested by the wireframe) don't exist anywhere either
+    (`dispatch_alerts` always fires every channel) — both judged more
+    architecture than a single founder occasionally editing `.env`
+    justifies right now.
+64. **`_get_founder` was duplicated identically in three route files**
+    (strategies, journal, paper_trades) before this pass added a 4th call
+    site (`src/db/risk_settings.py`) — extracted to `src/db/founder.py`,
+    all four call sites now share one implementation.
+65. **Two more real bugs caught by live/careful testing, not just green
+    mocked tests:**
+    - The `RiskSettings` model's own docstring, explaining the
+      execution-mode safety rule, quoted `'live_algo'` as prose — which is
+      the exact string pattern `tests/test_no_order_placement.py`'s
+      structural audit scans for. A real false positive from writing
+      *about* the forbidden term while explaining why it's forbidden;
+      reworded to avoid the quoted-literal pattern without softening the
+      rule itself.
+    - `float(MagicMock())` silently returns `1.0` rather than raising —
+      several tests with a fully-auto-mocked DB session were unknowingly
+      resolving VIX thresholds as `(1.0, 1.0, 1.0)`, misclassifying every
+      realistic VIX value as "extreme." One test (`test_scan.py`) happened
+      to assert the regime and caught it; others (`test_recommendations_route.py`)
+      didn't assert on it and passed anyway despite exercising nonsense
+      values. Fixed by patching `get_vix_thresholds` at the consuming
+      route module in every affected test file, rather than trying to mock
+      the raw SQLAlchemy chain realistically.
+    - Separately, a test-only bug (not a production bug): a fixture set
+      `app.dependency_overrides[get_settings]` to a `**kwargs`-signature
+      function directly — FastAPI introspects whatever callable sits in
+      `dependency_overrides`, and misread the `**kwargs` as a required
+      query parameter, breaking every route in that test file with a 422.
+      Fixed by wrapping it in a zero-arg lambda, matching every other test
+      file's established `_fake_settings()` convention.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

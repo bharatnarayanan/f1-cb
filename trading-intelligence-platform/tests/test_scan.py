@@ -64,11 +64,15 @@ def fake_market_client():
 
 
 @pytest.fixture
-def client(fake_db_session, fake_market_client):
+def client(fake_db_session, fake_market_client, monkeypatch):
     def _override_get_db():
         yield fake_db_session
 
     shared_cache = RedisCache(fakeredis.FakeRedis(decode_responses=True))
+
+    # Route-level tests care about scan behavior given a VIX regime, not
+    # threshold resolution (src/db/risk_settings.py's own tests cover that).
+    monkeypatch.setattr("src.routes.scan.get_vix_thresholds", lambda db, settings: (15.0, 20.0, 30.0))
 
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_redis_cache] = lambda: shared_cache

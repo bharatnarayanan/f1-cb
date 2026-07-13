@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from src.cache.redis_client import DEFAULT_QUOTE_TTL_SECONDS, RedisCache, get_redis_cache
 from src.config import Settings, get_settings
 from src.db.models import IndiaVixSnapshot
+from src.db.risk_settings import get_vix_thresholds
 from src.db.session import get_db
 from src.market_data.base import MarketDataClient
 from src.market_data.exceptions import MarketDataInvalidRequest
@@ -88,7 +89,8 @@ def get_vix(
     if "NSE:INDIA VIX" not in quote:
         raise MarketDataInvalidRequest("Kite Connect returned no data for NSE:INDIA VIX.")
     value = float(quote["NSE:INDIA VIX"]["last_price"])
-    regime = compute_vix_regime(value, settings)
+    normal_max, elevated_max, high_max = get_vix_thresholds(db, settings)
+    regime = compute_vix_regime(value, normal_max, elevated_max, high_max)
     now = datetime.now(timezone.utc)
 
     try:

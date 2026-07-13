@@ -4,6 +4,7 @@ import { fetchHealth } from "./api/client";
 import { Dashboard } from "./pages/Dashboard";
 import { PaperTrading } from "./pages/PaperTrading";
 import { RecommendationDetail } from "./pages/RecommendationDetail";
+import { SettingsScreen } from "./pages/SettingsScreen";
 import { StrategyMarketplace } from "./pages/StrategyMarketplace";
 import { TradeJournal } from "./pages/TradeJournal";
 
@@ -12,7 +13,8 @@ type View =
   | { name: "detail"; id: string }
   | { name: "paper-trading" }
   | { name: "strategies" }
-  | { name: "journal"; prefillRecommendationId?: string };
+  | { name: "journal"; prefillRecommendationId?: string }
+  | { name: "settings" };
 
 function App() {
   const [view, setView] = useState<View>({ name: "dashboard" });
@@ -32,6 +34,7 @@ function App() {
         {navButton("Paper Trading", { name: "paper-trading" }, (v) => v.name === "paper-trading")}
         {navButton("Strategies", { name: "strategies" }, (v) => v.name === "strategies")}
         {navButton("Journal", { name: "journal" }, (v) => v.name === "journal")}
+        {navButton("Settings", { name: "settings" }, (v) => v.name === "settings")}
         <div className="status-bar">
           {health && (
             <>
@@ -53,6 +56,7 @@ function App() {
       {view.name === "paper-trading" && <PaperTrading />}
       {view.name === "strategies" && <StrategyMarketplace />}
       {view.name === "journal" && <TradeJournal prefillRecommendationId={view.prefillRecommendationId} />}
+      {view.name === "settings" && <SettingsScreen />}
     </div>
   );
 }
