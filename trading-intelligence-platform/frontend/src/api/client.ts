@@ -1,4 +1,15 @@
-import type { PaperTrade, RecommendationDetail, RecommendationSummary } from "./types";
+import type {
+  BacktestResult,
+  IngestStrategyResponse,
+  JournalEntry,
+  JournalOutcome,
+  PaperTrade,
+  RecommendationDetail,
+  RecommendationSummary,
+  StrategyDetail,
+  StrategySourceType,
+  StrategySummary,
+} from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -57,4 +68,39 @@ export function closePaperTrade(id: string, force = false) {
 
 export function fetchHealth() {
   return request<{ status: string; data_mode: string; safety_notice: string }>("/health");
+}
+
+export function listStrategies() {
+  return request<{ strategies: StrategySummary[] }>("/api/v1/strategies");
+}
+
+export function getStrategy(id: string) {
+  return request<StrategyDetail>(`/api/v1/strategies/${id}`);
+}
+
+export function ingestStrategy(body: { name: string; source_type: StrategySourceType; raw_input: string; source_ref?: string }) {
+  return request<IngestStrategyResponse>("/api/v1/strategies", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function backtestStrategy(id: string) {
+  return request<BacktestResult>(`/api/v1/strategies/${id}/backtest`, { method: "POST" });
+}
+
+export function fuseStrategies(body: { name: string; base_strategy_id: string; other_strategy_id: string }) {
+  return request<{ fused_strategy_id: string; resolved_logic: Record<string, unknown> }>("/api/v1/strategies/fuse", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function exportStrategy(id: string) {
+  return request<{ strategy_id: string; pine_script: string }>(`/api/v1/strategies/${id}/export`);
+}
+
+export function listJournalEntries() {
+  return request<{ entries: JournalEntry[] }>("/api/v1/journal");
+}
+
+export function logJournalOutcome(body: { recommendation_id?: string; outcome: JournalOutcome; realized_pnl_pct?: number; observation?: string }) {
+  return request<JournalEntry>("/api/v1/journal", { method: "POST", body: JSON.stringify(body) });
 }

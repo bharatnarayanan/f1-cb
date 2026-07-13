@@ -53,3 +53,62 @@ export interface PaperTrade {
   opened_at: string | null;
   closed_at: string | null;
 }
+
+// Mirrors src/routes/strategies.py — canonical_logic's exact shape is
+// docs/strategy_schema.json; the frontend never needs to construct or
+// validate it, only display it (as JSON) and pass it through, so it's
+// typed loosely here rather than mirroring every nested field.
+export type StrategySourceType = "video" | "text" | "pseudocode" | "pine_script" | "user_rule";
+export type StrategyStatus = "ingested" | "extracted" | "backtested" | "usable" | "rejected";
+
+export interface StrategySummary {
+  id: string;
+  name: string;
+  source_type: StrategySourceType;
+  status: StrategyStatus;
+}
+
+export interface StrategyDetail extends StrategySummary {
+  canonical_logic: Record<string, unknown> | null;
+}
+
+export interface IngestStrategyResponse {
+  id: string;
+  name: string;
+  status: StrategyStatus;
+  canonical_logic: Record<string, unknown> | null;
+  extraction_error: string | null;
+}
+
+export interface BacktestTrade {
+  entry_ts: string;
+  exit_ts: string;
+  entry_price: number;
+  exit_price: number;
+  pnl: number;
+  return_pct: number;
+}
+
+export interface BacktestResult {
+  strategy_id: string;
+  data_mode: string;
+  num_trades: number;
+  win_rate_pct: number | null;
+  sharpe_ratio: number | null;
+  max_drawdown_pct: number | null;
+  total_return_pct: number | null;
+  confidence_score: number;
+  trade_log: BacktestTrade[];
+  assumptions: string[];
+}
+
+// Mirrors src/routes/journal.py.
+export type JournalOutcome = "win" | "loss" | "breakeven" | "not_taken";
+
+export interface JournalEntry {
+  id: string;
+  recommendation_id: string | null;
+  outcome: JournalOutcome;
+  realized_pnl_pct: number | null;
+  observation: string | null;
+}

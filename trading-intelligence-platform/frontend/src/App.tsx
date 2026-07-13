@@ -4,26 +4,34 @@ import { fetchHealth } from "./api/client";
 import { Dashboard } from "./pages/Dashboard";
 import { PaperTrading } from "./pages/PaperTrading";
 import { RecommendationDetail } from "./pages/RecommendationDetail";
+import { StrategyMarketplace } from "./pages/StrategyMarketplace";
+import { TradeJournal } from "./pages/TradeJournal";
 
-type View = { name: "dashboard" } | { name: "detail"; id: string } | { name: "paper-trading" };
+type View =
+  | { name: "dashboard" }
+  | { name: "detail"; id: string }
+  | { name: "paper-trading" }
+  | { name: "strategies" }
+  | { name: "journal"; prefillRecommendationId?: string };
 
 function App() {
   const [view, setView] = useState<View>({ name: "dashboard" });
   const { data: health } = useQuery({ queryKey: ["health"], queryFn: fetchHealth, refetchInterval: 60_000 });
 
+  const navButton = (label: string, target: View, matches: (v: View) => boolean) => (
+    <button className={matches(view) ? "active" : ""} onClick={() => setView(target)}>
+      {label}
+    </button>
+  );
+
   return (
     <div className="app-shell">
       <div className="top-nav">
         <span className="brand">TIP</span>
-        <button className={view.name === "dashboard" ? "active" : ""} onClick={() => setView({ name: "dashboard" })}>
-          Dashboard
-        </button>
-        <button
-          className={view.name === "paper-trading" ? "active" : ""}
-          onClick={() => setView({ name: "paper-trading" })}
-        >
-          Paper Trading
-        </button>
+        {navButton("Dashboard", { name: "dashboard" }, (v) => v.name === "dashboard" || v.name === "detail")}
+        {navButton("Paper Trading", { name: "paper-trading" }, (v) => v.name === "paper-trading")}
+        {navButton("Strategies", { name: "strategies" }, (v) => v.name === "strategies")}
+        {navButton("Journal", { name: "journal" }, (v) => v.name === "journal")}
         <div className="status-bar">
           {health && (
             <>
@@ -35,8 +43,16 @@ function App() {
       </div>
 
       {view.name === "dashboard" && <Dashboard onSelect={(id) => setView({ name: "detail", id })} />}
-      {view.name === "detail" && <RecommendationDetail id={view.id} onBack={() => setView({ name: "dashboard" })} />}
+      {view.name === "detail" && (
+        <RecommendationDetail
+          id={view.id}
+          onBack={() => setView({ name: "dashboard" })}
+          onLogOutcome={(id) => setView({ name: "journal", prefillRecommendationId: id })}
+        />
+      )}
       {view.name === "paper-trading" && <PaperTrading />}
+      {view.name === "strategies" && <StrategyMarketplace />}
+      {view.name === "journal" && <TradeJournal prefillRecommendationId={view.prefillRecommendationId} />}
     </div>
   );
 }

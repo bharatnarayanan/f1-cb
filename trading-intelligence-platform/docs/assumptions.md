@@ -427,6 +427,33 @@ Proposed as a two-pass split and confirmed with you before building:
     `npm install && npm run dev`, port 5173) — CLAUDE.md's own
     orchestration list already named it as part of the target stack.
 
+## Phase 7 Pass 2a (Strategy Marketplace + Trade Journal UI) — new decisions
+
+57. **Confirmed while scoping Pass 2 (before Pass 2a was approved): the
+    Strategy Marketplace and Trade Journal screens needed zero new backend
+    work** — every route (`GET/POST /api/v1/strategies`,
+    `POST /{id}/backtest`, `POST /fuse`, `GET /{id}/export`,
+    `GET/POST /api/v1/journal`) already existed and was complete from
+    Phases 5-6. Only `frontend/` changed this pass. This is what
+    distinguished Pass 2a from Pass 2b (watchlist/risk/alerts settings —
+    still deferred, still needs real backend CRUD work first).
+58. **`CumulativePnlChart` extracted from `EquityCurve`** (both under
+    `frontend/src/components/`) — the backtest result view needed the same
+    cumulative-P&L line chart Paper Trading already had, built from a
+    different source (`trade_log` entries vs. closed `PaperTrade` rows).
+    Rather than duplicate the Recharts wiring, `EquityCurve` now builds its
+    points and delegates to the shared, source-agnostic chart component.
+59. **"Log outcome" on the recommendation deep-dive routes to the Trade
+    Journal screen with `recommendation_id` pre-filled** — matches
+    `docs/ui_wireframes.md`'s own user flow #1 ("expand reasoning tree →
+    execute manually → log the outcome later in the trade journal")
+    exactly, rather than a floating unlinked journal form.
+60. **Video-strategy submission's textarea placeholder explicitly says
+    "paste the description/transcript yourself"** — reinforcing #37
+    (Phase 5's decision that this app never downloads or transcribes video
+    automatically) at the exact point a user might otherwise expect a URL
+    alone to be enough.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

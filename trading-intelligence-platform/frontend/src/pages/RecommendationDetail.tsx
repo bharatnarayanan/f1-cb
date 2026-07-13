@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRecommendation, openPaperTrade } from "../api/client";
 import { ReasoningTree } from "../components/ReasoningTree";
 
-export function RecommendationDetail({ id, onBack }: { id: string; onBack: () => void }) {
+interface Props {
+  id: string;
+  onBack: () => void;
+  onLogOutcome: (recommendationId: string) => void;
+}
+
+export function RecommendationDetail({ id, onBack, onLogOutcome }: Props) {
   const queryClient = useQueryClient();
   const { data: rec, isLoading, error } = useQuery({
     queryKey: ["recommendation", id],
@@ -39,6 +45,9 @@ export function RecommendationDetail({ id, onBack }: { id: string; onBack: () =>
         <div style={{ marginTop: 16, display: "flex", gap: 8, alignItems: "center" }}>
           <button className="btn" disabled={openTrade.isPending || openTrade.isSuccess} onClick={() => openTrade.mutate()}>
             {openTrade.isSuccess ? "Paper trade opened" : "Open paper trade"}
+          </button>
+          <button className="btn secondary" onClick={() => onLogOutcome(id)}>
+            Log outcome
           </button>
           {openTrade.isError && <span className="bearish">{(openTrade.error as Error).message}</span>}
         </div>
