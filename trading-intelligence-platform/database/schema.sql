@@ -40,6 +40,10 @@ CREATE TABLE risk_settings (
     vix_high_max                NUMERIC(5, 2) NOT NULL DEFAULT 30.00,
     suppress_tactical_on_extreme BOOLEAN NOT NULL DEFAULT TRUE,
     expiry_day_dampening        BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Founder-editable, not a hardcoded fact — NSE's weekly expiry weekday
+    -- has changed before. 1 = Tuesday (Python date.weekday(): Mon=0..Sun=6).
+    -- Added in migration 0007 (Phase 8).
+    expiry_weekday               INTEGER NOT NULL DEFAULT 1,
     max_daily_recommendations   INTEGER NOT NULL DEFAULT 20,
     execution_mode              execution_mode NOT NULL DEFAULT 'paper',
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()

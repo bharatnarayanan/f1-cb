@@ -53,6 +53,10 @@ psycopg[binary]==3.2.3
 # Cache
 redis==5.0.8
 
+# Monitoring (Phase 8, docs/CLAUDE.md section 4 orchestration). MIT-licensed,
+# the official client — see src/metrics.py.
+prometheus-client==0.21.0
+
 # Tests
 pytest==8.3.3
 pytest-mock==3.14.0

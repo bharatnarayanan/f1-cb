@@ -8,7 +8,7 @@ import pytest
 from src.config import Settings
 from src.db.founder import FOUNDER_EMAIL
 from src.db.models import RiskSettings, User
-from src.db.risk_settings import get_vix_thresholds
+from src.db.risk_settings import get_guardrail_settings, get_vix_thresholds
 
 
 def _settings() -> Settings:
@@ -55,3 +55,42 @@ def test_raises_when_founder_is_missing():
 
     with pytest.raises(RuntimeError, match="founder"):
         get_vix_thresholds(db, _settings())
+
+
+def test_guardrail_settings_prefers_the_db_row():
+    founder = _founder()
+    row = RiskSettings(
+        user_id=founder.id,
+        suppress_tactical_on_extreme=False,
+        expiry_day_dampening=False,
+        expiry_weekday=4,
+        max_daily_recommendations=5,
+    )
+    db = MagicMock()
+    db.execute.side_effect = [
+        MagicMock(scalar_one_or_none=lambda: founder),
+        MagicMock(scalar_one_or_none=lambda: row),
+    ]
+
+    guardrails = get_guardrail_settings(db)
+
+    assert guardrails.suppress_tactical_on_extreme is False
+    assert guardrails.expiry_day_dampening is False
+    assert guardrails.expiry_weekday == 4
+    assert guardrails.max_daily_recommendations == 5
+
+
+def test_guardrail_settings_falls_back_to_defaults_when_no_row_exists():
+    founder = _founder()
+    db = MagicMock()
+    db.execute.side_effect = [
+        MagicMock(scalar_one_or_none=lambda: founder),
+        MagicMock(scalar_one_or_none=lambda: None),
+    ]
+
+    guardrails = get_guardrail_settings(db)
+
+    assert guardrails.suppress_tactical_on_extreme is True
+    assert guardrails.expiry_day_dampening is True
+    assert guardrails.expiry_weekday == 1
+    assert guardrails.max_daily_recommendations == 20

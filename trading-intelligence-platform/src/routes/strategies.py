@@ -29,6 +29,7 @@ from src.market_data.base import MarketDataClient
 from src.market_data.exceptions import MarketDataInvalidRequest
 from src.market_data.factory import get_market_data_client
 from src.market_data.instruments import resolve_instrument_token
+from src.metrics import backtests_run_total
 
 router = APIRouter(prefix="/api/v1/strategies", tags=["strategies"])
 
@@ -175,6 +176,8 @@ def backtest_strategy(
     except SQLAlchemyError:
         db.rollback()
         raise
+
+    backtests_run_total.inc()
 
     return {
         "strategy_id": strategy_id,

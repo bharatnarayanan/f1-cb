@@ -1,0 +1,87 @@
+{
+  "title": "TIP — API Overview",
+  "uid": "tip-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate by path (req/s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (path) (rate(tip_http_requests_total[5m]))",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "API errors by code (per 5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (code) (increase(tip_api_errors_total[5m]))",
+          "legendFormat": "{{code}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Request latency p95 by path (s)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (path, le) (rate(tip_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Recommendations created vs. suppressed (per 5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (category) (increase(tip_recommendations_created_total[5m]))",
+          "legendFormat": "created: {{category}}"
+        },
+        {
+          "expr": "sum by (reason) (increase(tip_recommendations_suppressed_total[5m]))",
+          "legendFormat": "suppressed: {{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Alerts dispatched by channel/status (per 5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "sum by (channel, status) (increase(tip_alerts_dispatched_total[5m]))",
+          "legendFormat": "{{channel}}/{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Backtests run (total)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "tip_backtests_run_total",
+          "legendFormat": "backtests"
+        }
+      ]
+    }
+  ]
+}

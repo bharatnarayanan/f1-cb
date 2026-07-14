@@ -1,0 +1,13 @@
+# Auto-loads any dashboard JSON dropped in monitoring/grafana/dashboards/
+# on Grafana startup (Phase 8, F8.3).
+apiVersion: 1
+
+providers:
+  - name: TIP
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

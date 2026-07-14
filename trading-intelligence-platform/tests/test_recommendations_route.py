@@ -52,6 +52,11 @@ def _flat_candles(count: int = 40) -> list[dict]:
 def fake_db_session():
     session = MagicMock()
     session.execute.return_value.scalars.return_value.all.return_value = ["RELIANCE"]
+    # New in Phase 8: create_recommendation's max-daily-cap check does
+    # db.execute(select(func.count())...).scalar_one() off the same shared
+    # execute() mock — default it to 0 (below any cap) so a MagicMock isn't
+    # compared against an int and raises TypeError.
+    session.execute.return_value.scalar_one.return_value = 0
     return session
 
 
@@ -80,6 +85,21 @@ def client(fake_db_session, fake_market_client, monkeypatch):
     # silently resolves float(MagicMock()) == 1.0 for every threshold,
     # misclassifying any realistic VIX value as "extreme".
     monkeypatch.setattr("src.routes.recommendations.get_vix_thresholds", lambda db, settings: (15.0, 20.0, 30.0))
+
+    # Same rationale as get_vix_thresholds above: route tests care about
+    # recommendation behavior given already-resolved guardrails, not DB
+    # threshold resolution — src/db/risk_settings.py's own tests cover that.
+    from src.db.risk_settings import GuardrailSettings
+
+    monkeypatch.setattr(
+        "src.routes.recommendations.get_guardrail_settings",
+        lambda db: GuardrailSettings(
+            suppress_tactical_on_extreme=True,
+            expiry_day_dampening=True,
+            expiry_weekday=1,
+            max_daily_recommendations=20,
+        ),
+    )
 
     app.dependency_overrides[get_db] = _override_get_db
     app.dependency_overrides[get_redis_cache] = lambda: shared_cache

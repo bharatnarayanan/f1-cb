@@ -44,6 +44,7 @@ class RiskSettingsUpdate(BaseModel):
     vix_high_max: float | None = None
     suppress_tactical_on_extreme: bool | None = None
     expiry_day_dampening: bool | None = None
+    expiry_weekday: int | None = None
     max_daily_recommendations: int | None = None
     execution_mode: str | None = None
 
@@ -55,6 +56,7 @@ def _serialize_risk_settings(row: RiskSettings) -> dict[str, Any]:
         "vix_high_max": float(row.vix_high_max),
         "suppress_tactical_on_extreme": row.suppress_tactical_on_extreme,
         "expiry_day_dampening": row.expiry_day_dampening,
+        "expiry_weekday": row.expiry_weekday,
         "max_daily_recommendations": row.max_daily_recommendations,
         "execution_mode": row.execution_mode,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -120,6 +122,10 @@ def update_risk_settings(body: RiskSettingsUpdate, db: Session = Depends(get_db)
     if body.execution_mode is not None and body.execution_mode not in _VALID_EXECUTION_MODES:
         raise MarketDataInvalidRequest(
             f"execution_mode must be one of {sorted(_VALID_EXECUTION_MODES)} — no other mode is ever permitted."
+        )
+    if body.expiry_weekday is not None and not (0 <= body.expiry_weekday <= 6):
+        raise MarketDataInvalidRequest(
+            "expiry_weekday must be 0-6 (Python date.weekday() convention: Monday=0 ... Sunday=6)."
         )
 
     founder = get_founder(db)

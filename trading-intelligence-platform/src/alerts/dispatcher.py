@@ -21,6 +21,7 @@ from src.alerts.exceptions import AlertDeliveryError
 from src.alerts.telegram import send_telegram_alert
 from src.config import Settings
 from src.db.models import AlertLog, Recommendation
+from src.metrics import alerts_dispatched_total
 
 logger = logging.getLogger(__name__)
 
@@ -67,4 +68,5 @@ def dispatch_alerts(recommendation: Recommendation, db: Session, settings: Setti
 
     for log in logs:
         db.add(log)
+        alerts_dispatched_total.labels(channel=log.channel, status=log.dispatch_status).inc()
     return logs

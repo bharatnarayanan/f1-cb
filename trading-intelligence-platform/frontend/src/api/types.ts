@@ -135,6 +135,7 @@ export interface RiskSettings {
   vix_high_max: number;
   suppress_tactical_on_extreme: boolean;
   expiry_day_dampening: boolean;
+  expiry_weekday: number;
   max_daily_recommendations: number;
   execution_mode: ExecutionMode;
   updated_at: string | null;

@@ -10,6 +10,9 @@ import {
 } from "../api/client";
 import type { ExecutionMode } from "../api/types";
 
+// Matches Python's date.weekday(): Monday=0 ... Sunday=6 (src/db/models.py RiskSettings.expiry_weekday).
+const WEEKDAY_LABELS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 function WatchlistSection() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["watchlist"], queryFn: getWatchlist });
@@ -70,6 +73,7 @@ function RiskSettingsSection() {
     vix_high_max: 30,
     suppress_tactical_on_extreme: true,
     expiry_day_dampening: true,
+    expiry_weekday: 1,
     max_daily_recommendations: 20,
     execution_mode: "paper" as ExecutionMode,
   });
@@ -134,6 +138,18 @@ function RiskSettingsSection() {
           onChange={(e) => setForm({ ...form, expiry_day_dampening: e.target.checked })}
         />{" "}
         Dampen conviction on expiry days
+      </label>
+      <label className="meta" style={{ display: "block", marginBottom: 8 }}>
+        Weekly expiry day{" "}
+        <select
+          value={form.expiry_weekday}
+          onChange={(e) => setForm({ ...form, expiry_weekday: Number(e.target.value) })}
+          style={{ background: "var(--bg)", border: "1px solid var(--border)", color: "var(--text)", borderRadius: 4 }}
+        >
+          {WEEKDAY_LABELS.map((label, index) => (
+            <option key={label} value={index}>{label}</option>
+          ))}
+        </select>
       </label>
       <label className="meta" style={{ display: "block", marginBottom: 12 }}>
         Max recommendations/day{" "}

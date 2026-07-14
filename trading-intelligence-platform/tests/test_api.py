@@ -206,6 +206,30 @@ def test_get_vix_flags_extreme_regime(client, fake_market_client):
     assert response.json()["regime"] == "extreme"
 
 
+def test_unhandled_exception_returns_generic_500_not_a_traceback(client, fake_market_client):
+    """Phase 8's catch-all handler must not shadow the four typed handlers
+    above (verified by every other test in this file still passing) and
+    must never leak exc's own message to the client — an unclassified
+    exception could format anything, including something sensitive, into
+    its str() (docs/CLAUDE.md section 3).
+
+    TestClient defaults to raise_server_exceptions=True, which re-raises
+    the original exception in-process for debugging even though
+    ServerErrorMiddleware already ran our handler and would have sent a
+    real 500 to a real client — raise_server_exceptions=False here lets
+    the test observe the actual HTTP response a caller would get.
+    """
+    fake_market_client.get_quote.side_effect = RuntimeError("some internal detail")
+
+    with TestClient(app, raise_server_exceptions=False) as raw_client:
+        response = raw_client.get("/api/v1/market/quote/NIFTY 50")
+
+    assert response.status_code == 500
+    body = response.json()
+    assert body["code"] == "internal_error"
+    assert "some internal detail" not in body["detail"]
+
+
 def test_no_route_places_or_modifies_or_cancels_an_order(client):
     routes = {route.path for route in app.routes}
     forbidden_fragments = ("place_order", "modify_order", "cancel_order", "/order")

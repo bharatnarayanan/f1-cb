@@ -22,14 +22,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.alerts.dispatcher import dispatch_alerts
 from src.config import Settings, get_settings
 from src.db.models import Recommendation, SectorIndexRecord, WatchlistConstituent
-from src.db.risk_settings import get_vix_thresholds
+from src.db.risk_settings import get_guardrail_settings, get_vix_thresholds
 from src.db.session import get_db
 from src.engine.aggregation import resample_candles
 from src.engine.correlation import score_correlation
@@ -37,8 +37,9 @@ from src.engine.indicators import compute_rsi
 from src.engine.negation import predict_negation
 from src.engine.patterns import detect_patterns
 from src.engine.recommendations import build_recommendation
+from src.engine.risk_guardrails import apply_expiry_dampening, is_expiry_day, should_suppress_tactical
 from src.engine.scoring import SrContextLevel
-from src.engine.seasonality import detect_impulse_move
+from src.engine.seasonality import IST, detect_impulse_move
 from src.engine.support_resistance import calculate_sr_levels
 from src.llm.narration import narrate_rationale
 from src.market_data.base import MarketDataClient
@@ -46,6 +47,7 @@ from src.market_data.exceptions import MarketDataInvalidRequest
 from src.market_data.factory import get_market_data_client
 from src.market_data.instruments import resolve_instrument_token
 from src.market_data.vix import compute_vix_regime
+from src.metrics import recommendations_created_total, recommendations_suppressed_total
 
 router = APIRouter(prefix="/api/v1/recommendations", tags=["recommendations"])
 
@@ -103,6 +105,30 @@ def create_recommendation(
     normal_max, elevated_max, high_max = get_vix_thresholds(db, settings)
     vix_regime = compute_vix_regime(vix_value, normal_max, elevated_max, high_max)
 
+    guardrails = get_guardrail_settings(db)
+    now_ist = datetime.now(timezone.utc).astimezone(IST)
+    is_expiry = is_expiry_day(now_ist.date(), guardrails.expiry_weekday)
+
+    # Checked early (before pattern detection, correlation fetches across
+    # the whole watchlist, and a Claude narration call) so hitting the cap
+    # doesn't pay for work whose result gets discarded anyway.
+    start_of_day_utc = now_ist.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    todays_count = db.execute(
+        select(func.count()).select_from(Recommendation).where(Recommendation.created_at >= start_of_day_utc)
+    ).scalar_one()
+    if todays_count >= guardrails.max_daily_recommendations:
+        recommendations_suppressed_total.labels(reason="daily_cap").inc()
+        return {
+            "symbol": kite_symbol,
+            "data_mode": settings.data_mode,
+            "vix_regime": vix_regime,
+            "recommendation": None,
+            "message": (
+                f"Daily recommendation cap reached ({guardrails.max_daily_recommendations}/day) — "
+                "adjust it in Settings if you want more today."
+            ),
+        }
+
     impulse = detect_impulse_move(base_candles)
     if impulse is not None:
         pattern_type, direction, used_timeframe, bar_ts, is_impulse = "impulse", impulse.direction, "5m", impulse.bar_ts, True
@@ -159,6 +185,24 @@ def create_recommendation(
         is_impulse=is_impulse,
         negation_estimate=negation_estimate,
     )
+
+    if should_suppress_tactical(draft.category, vix_regime, guardrails.suppress_tactical_on_extreme):
+        recommendations_suppressed_total.labels(reason="tactical_extreme_vix").inc()
+        return {
+            "symbol": kite_symbol,
+            "data_mode": settings.data_mode,
+            "vix_regime": vix_regime,
+            "recommendation": None,
+            "message": "Tactical recommendations are suppressed while VIX is in the Extreme regime.",
+        }
+
+    # draft is frozen (src/engine/recommendations.py) — the dampened value
+    # is computed separately and used below rather than mutating draft.
+    final_conviction_score = apply_expiry_dampening(draft.conviction_score, is_expiry, guardrails.expiry_day_dampening)
+    draft.rationale["expiry_day"] = is_expiry
+    if final_conviction_score != draft.conviction_score:
+        draft.rationale["conviction_score_before_expiry_dampening"] = draft.conviction_score
+
     draft.rationale["narrative"] = narrate_rationale(kite_symbol, draft.rationale, settings)
 
     row = Recommendation(
@@ -168,9 +212,10 @@ def create_recommendation(
         forecast_horizon=draft.forecast_horizon,
         confidence_score=draft.confidence_score,
         risk_score=draft.risk_score,
-        conviction_score=draft.conviction_score,
+        conviction_score=final_conviction_score,
         rationale=draft.rationale,
         vix_regime_at_creation=vix_regime,
+        is_expiry_day=is_expiry,
     )
     db.add(row)
     db.flush()  # populate row.id (default=uuid.uuid4 fires at flush, not construction) for the AlertLog FK below
@@ -187,6 +232,8 @@ def create_recommendation(
         db.rollback()
         raise
 
+    recommendations_created_total.labels(category=draft.category).inc()
+
     return {
         "symbol": kite_symbol,
         "data_mode": settings.data_mode,
@@ -198,7 +245,7 @@ def create_recommendation(
             "forecast_horizon": draft.forecast_horizon,
             "confidence_score": draft.confidence_score,
             "risk_score": draft.risk_score,
-            "conviction_score": draft.conviction_score,
+            "conviction_score": final_conviction_score,
             "rationale": draft.rationale,
         },
         "alerts": [{"channel": log.channel, "dispatch_status": log.dispatch_status} for log in alert_logs],

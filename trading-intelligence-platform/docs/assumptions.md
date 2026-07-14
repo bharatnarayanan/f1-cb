@@ -513,6 +513,107 @@ Confirmed while scoping, then built exactly as proposed:
       Fixed by wrapping it in a zero-arg lambda, matching every other test
       file's established `_fake_settings()` convention.
 
+## Phase 8 (Production Hardening) — new decisions
+
+66. **`suppress_tactical_on_extreme`, `expiry_day_dampening`, and
+    `max_daily_recommendations` existed in `risk_settings` since Phase 1 and
+    were editable via the Pass 2b Settings UI, but were never actually read
+    anywhere** — confirmed by grep before starting, not assumed. Phase 8
+    wires all three into `src/routes/recommendations.py`'s
+    `create_recommendation`: the daily cap is checked first (before pattern
+    detection, correlation fetches, or a Claude narration call) so hitting
+    it doesn't pay for work that gets discarded; tactical suppression is
+    checked once the draft's category/VIX regime are known; expiry
+    dampening is applied last, right before persistence.
+67. **`expiry_day_dampening`'s gap was mitigated, not fully deferred** (per
+    explicit direction): rather than hardcoding NSE's weekly-expiry weekday
+    as an assumed fact — one that has changed before and isn't something to
+    bake in as a guess — `RiskSettings.expiry_weekday` (migration `0007`)
+    makes it a founder-editable integer (Python `date.weekday()`
+    convention, Monday=0 … Sunday=6), exposed via `GET`/`PUT
+    /api/v1/settings/risk` and the Settings screen. Default is `1`
+    (Tuesday) — corrected mid-build from an initially-planned Thursday
+    default after the founder flagged that NIFTY's current weekly expiry is
+    Tuesday; this is exactly the kind of fact this field was designed not
+    to hardcode, so no other code needed to change.
+68. **Expiry-day dampening uses a new documented heuristic**, same posture
+    as `conviction_score`'s formula (Phase 4) and the negation-heuristic
+    table (Phase 3): a flat 30% reduction
+    (`EXPIRY_DAY_CONVICTION_DAMPENING = 0.7` in
+    `src/engine/risk_guardrails.py`), not a hard zero — an expiry-day setup
+    that's otherwise strong isn't erased outright; that's what suppression
+    (a hard "don't fire") is for. No formula for this existed anywhere in
+    the original spec.
+69. **Live-verified all three guardrails end to end against the running
+    stack**, not just unit tests: forced VIX thresholds down to trigger the
+    Extreme regime and confirmed a tactical recommendation was suppressed;
+    set `max_daily_recommendations=1` and confirmed the second same-day
+    call was capped; confirmed on the real current date (a Tuesday) that
+    `is_expiry_day` fired, the persisted `conviction_score` in Postgres
+    matched the dampened API response value exactly, and
+    `rationale.conviction_score_before_expiry_dampening` recorded the
+    pre-dampening value for audit purposes.
+70. **Caught and fixed, before it shipped, a response/persistence
+    mismatch**: the final response dict in `create_recommendation` still
+    returned the undampened `draft.conviction_score` (an immutable
+    dataclass field) instead of the `final_conviction_score` local actually
+    written to the `Recommendation` row — on an expiry day, the API would
+    have shown the founder a different, higher conviction number than what
+    was saved and what any downstream alert/consumer would read back later.
+
+71. **Prometheus + Grafana added for monitoring** (`src/metrics.py`,
+    `GET /metrics` in `src/main.py`, `monitoring/`): six metrics families —
+    HTTP request count/latency (by method + route *template*, never the raw
+    path, to avoid unbounded label cardinality from symbols/UUIDs),
+    recommendations created (by category) and suppressed (by guardrail
+    reason), alerts dispatched (by channel/status), backtests run, and API
+    errors (by the same `code` string each exception handler already
+    returns to the client). `/metrics` is excluded from its own request
+    middleware so scraping doesn't inflate the counters it's reporting.
+    Both services are local-only with a fixed default Grafana login — same
+    posture as every other service in `docker-compose.yml`, not a public
+    deployment (docs/CLAUDE.md section 10).
+72. **Grafana dashboard and Prometheus datasource are provisioned as code**
+    (`monitoring/grafana/provisioning/`, `monitoring/grafana/dashboards/tip-overview.json`),
+    not clicked together manually — `docker compose up` alone gets a
+    working dashboard with no post-startup configuration step. One bind-mount
+    ordering issue was caught live: nesting the dashboards-JSON mount inside
+    the already-read-only `provisioning/dashboards` mount failed at container
+    start (`mkdirat ... read-only file system`) because Docker can't create a
+    new mountpoint inside an existing read-only bind mount; fixed by mounting
+    the dashboard JSON to a separate top-level path (`/etc/grafana/dashboards`)
+    referenced from `dashboards.yml` instead of nesting it.
+73. **Live-verified the full metrics pipeline end to end**, not just that
+    `/metrics` returns 200: fired a real recommendation, a suppressed
+    (daily-cap) recommendation, and a strategy backtest against the running
+    stack and confirmed each counter incremented with the right labels;
+    confirmed Prometheus's scrape target for `api:8000` reports `health:
+    up`; confirmed Grafana's provisioned datasource resolves a live
+    `tip_backtests_run_total` query through its proxy API; confirmed the
+    `tip-overview` dashboard is auto-discoverable via Grafana's search API
+    with no manual setup.
+74. **`docs/deployment_guide.md` was fully rewritten**, not patched — it
+    was still describing the pre-build F1 handoff scaffold (Postgres
+    schema applied via `docker-entrypoint-initdb.d`, which Phase 2 replaced
+    with Alembic; no `frontend` service; missing every env var added since
+    Phase 6/7). Caught one factual error while drafting the rewrite itself,
+    before it shipped: an initial draft's "verify no order placement" step
+    used a plain `grep -ri "place_order" src/`, which actually returns
+    matches (comments in `src/market_data/kite_client.py`/`base.py` that
+    legitimately explain the prohibition) rather than "nothing" as
+    originally written — corrected to point at
+    `tests/test_no_order_placement.py`'s structural regex audit, which is
+    the actual check that distinguishes a prohibited call/def from a
+    docstring mentioning why one doesn't exist, and confirmed it passes.
+75. **Phase 8 complete**: all three risk guardrails
+    (`suppress_tactical_on_extreme`, `expiry_day_dampening` with a
+    founder-editable `expiry_weekday`, `max_daily_recommendations`) enforced
+    and live-verified; a generic 500 handler added and confirmed it doesn't
+    shadow the four typed handlers; Prometheus + Grafana monitoring live end
+    to end; deployment guide rewritten and its own instructions verified
+    against the real repo rather than assumed. Full suite: 250 passed, 1
+    skipped, 0 failed.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

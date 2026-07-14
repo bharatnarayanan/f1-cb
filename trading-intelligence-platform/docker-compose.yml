@@ -96,7 +96,41 @@ services:
     depends_on:
       - api
 
+  # Phase 8 (F8.3) monitoring — scrapes the `api` service's GET /metrics.
+  # Local-only, same posture as every other service in this file: no auth,
+  # no public exposure (docs/CLAUDE.md section 10).
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    ports:
+      - "3001:3000"
+    environment:
+      # Single-founder local deployment — a fixed default login, not a
+      # secret worth externalizing (change it in the UI if this ever moves
+      # off localhost).
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   timescaledb_data:
   redis_data:
   frontend_node_modules:
+  prometheus_data:
+  grafana_data:

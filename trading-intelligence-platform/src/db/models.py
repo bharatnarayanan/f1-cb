@@ -375,6 +375,11 @@ class RiskSettings(Base):
     vix_high_max: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=30.0)
     suppress_tactical_on_extreme: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     expiry_day_dampening: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Founder-editable (migration 0007, Phase 8) rather than a hardcoded
+    # assumption about NSE's current weekly-expiry weekday — that's
+    # changed before and isn't something to bake in as a guessed fact.
+    # Python's date.weekday(): Monday=0 ... Sunday=6. Default 1 = Tuesday.
+    expiry_weekday: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     max_daily_recommendations: Mapped[int] = mapped_column(Integer, nullable=False, default=20)
     execution_mode: Mapped[str] = mapped_column(execution_mode_enum, nullable=False, default="paper")
     updated_at: Mapped[datetime] = mapped_column(
