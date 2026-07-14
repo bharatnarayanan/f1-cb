@@ -84,7 +84,10 @@ def client(fake_db_session, fake_market_client, monkeypatch):
     # cover that) — a fully-mocked db session's execute() chain otherwise
     # silently resolves float(MagicMock()) == 1.0 for every threshold,
     # misclassifying any realistic VIX value as "extreme".
-    monkeypatch.setattr("src.routes.recommendations.get_vix_thresholds", lambda db, settings: (15.0, 20.0, 30.0))
+    # Phase 8 (worker service pass) moved the actual pipeline implementation
+    # to src/recommendation_pipeline.py — src/routes/recommendations.py is
+    # now a thin wrapper, so these patch targets moved with it.
+    monkeypatch.setattr("src.recommendation_pipeline.get_vix_thresholds", lambda db, settings: (15.0, 20.0, 30.0))
 
     # Same rationale as get_vix_thresholds above: route tests care about
     # recommendation behavior given already-resolved guardrails, not DB
@@ -92,7 +95,7 @@ def client(fake_db_session, fake_market_client, monkeypatch):
     from src.db.risk_settings import GuardrailSettings
 
     monkeypatch.setattr(
-        "src.routes.recommendations.get_guardrail_settings",
+        "src.recommendation_pipeline.get_guardrail_settings",
         lambda db: GuardrailSettings(
             suppress_tactical_on_extreme=True,
             expiry_day_dampening=True,

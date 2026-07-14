@@ -1,7 +1,8 @@
 # Local dev compose for the Trading Intelligence Platform.
-# `api` and `frontend` are wired to real code — the `worker` (scheduled
-# pattern/negation/scoring pipeline) described in docs/architecture.md is
-# still later-phase work; see docs/deployment_guide.md.
+# `worker` (Phase 8) is the scheduled pattern/negation/scoring pipeline
+# described in docs/architecture.md — it shares src/recommendation_pipeline.py
+# with the `api` service's on-demand route, just calls it on a timer across
+# the whole active watchlist instead of one symbol per manual request.
 #
 # `api` builds from ./Dockerfile (TA-Lib's C library needs compiling —
 # python:3.11-slim's apt repos don't carry it, see Dockerfile's own
@@ -52,6 +53,52 @@ services:
       timescaledb:
         condition: service_healthy
       redis:
+        condition: service_started
+
+  worker:
+    # Reuses the `api` service's image tag rather than its own `build:`
+    # block — identical Dockerfile/context, so a separate build would just
+    # duplicate the same multi-minute TA-Lib + vectorbt/numpy/scipy install
+    # for no benefit. `docker compose build api` (or `up --build`) keeps
+    # this image current for both services.
+    image: trading-intelligence-platform-api:latest
+    working_dir: /app
+    # No `alembic upgrade head` here — the `api` service owns migrations;
+    # running the same migration from two containers racing on startup
+    # against a fresh volume risks a concurrent-DDL conflict. If the schema
+    # isn't ready yet when this starts, a cycle's DB queries fail, get
+    # logged, and the next interval just retries (src/worker/main.py).
+    command: sh -c "pip install --no-cache-dir -r requirements.txt && python -m src.worker.main"
+    ports:
+      # Own Prometheus metrics registry — a separate process from `api`,
+      # so its counter increments need their own exporter (src/worker/main.py).
+      - "9100:9100"
+    environment:
+      ENVIRONMENT: development
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
+      DATABASE_URL: postgresql+psycopg://tip:tip@timescaledb:5432/tip
+      REDIS_URL: redis://redis:6379/0
+      KITE_API_KEY: ${KITE_API_KEY:-}
+      KITE_ACCESS_TOKEN: ${KITE_ACCESS_TOKEN:-}
+      DATA_MODE: ${DATA_MODE:-sample}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      PATTERN_SCAN_INTERVAL_SECONDS: ${PATTERN_SCAN_INTERVAL_SECONDS:-300}
+    volumes:
+      - ./src:/app/src
+      - ./requirements.txt:/app/requirements.txt
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      api:
         condition: service_started
 
   timescaledb:

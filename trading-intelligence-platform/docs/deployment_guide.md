@@ -2,14 +2,19 @@
 
 ## Current state
 
-All 8 build phases (Foundation through Production Hardening) are complete.
-`docker compose up` starts five services — `api`, `timescaledb`, `redis`,
-`frontend`, plus `prometheus` and `grafana` for monitoring (seven total).
-There is no separate `worker` service yet: the intelligence pipeline
-(pattern detection, negation, scoring, alerting) currently runs on-demand
-from API routes (`POST /api/v1/scan/*`, `POST
-/api/v1/recommendations/{symbol}`), not on a scheduler — see
-`docs/assumptions.md` for the phase that deferred it.
+All 8 build phases (Foundation through Production Hardening) are complete,
+plus a follow-on pass that added the scheduled `worker` service.
+`docker compose up` starts eight services — `api`, `worker`, `timescaledb`,
+`redis`, `frontend`, `prometheus`, and `grafana`. `worker` and `api`'s
+on-demand `POST /api/v1/recommendations/{symbol}` route share one
+implementation (`src/recommendation_pipeline.py`) — `worker` just calls it
+on a timer across the whole active watchlist instead of one symbol per
+manual request, and additionally dedupes by newest-scanned-bar
+(`src/worker/dedup.py`) so it doesn't re-persist a decision about the same
+closed candle every tick. `POST /api/v1/scan/*` is still a separate,
+narrower on-demand endpoint (pattern/negation/S-R only, no scoring or
+alerting) — useful for manually inspecting one symbol without triggering a
+full recommendation.
 
 **Read-only reminder**: nothing in this deployment ever configures a Kite
 Connect credential with order-placement scope, and no code path anywhere in
@@ -34,12 +39,22 @@ Connect credential with order-placement scope, and no code path anywhere in
    - `api` — `http://localhost:8000`. On startup it runs `alembic upgrade
      head` (schema is Alembic-owned — see "Database schema" below), then
      starts uvicorn with `--reload`.
+   - `worker` — no exposed HTTP API. Long-running process (`src/worker/main.py`)
+     that wakes every `PATTERN_SCAN_INTERVAL_SECONDS` (default 300s),
+     scans the active watchlist during real NSE market hours (Mon-Fri
+     09:15-15:30 IST — see "Worker service" below), and creates
+     recommendations the same way the on-demand route does. Reuses the
+     `api` image (`image: trading-intelligence-platform-api:latest` in
+     `docker-compose.yml`) rather than its own `build:` — see that file's
+     comment if you ever need to know why.
    - `frontend` — `http://localhost:5173`. Vite dev server, hot-reloads on
      changes under `frontend/`.
    - `timescaledb` — `localhost:5432` (user/pass/db all `tip`).
-   - `redis` — `localhost:6379`.
-   - `prometheus` — `http://localhost:9090`. Scrapes `api:8000/metrics`
-     every 15s.
+   - `redis` — `localhost:6379`. Also backs the worker's scan dedup
+     (`src/worker/dedup.py`).
+   - `prometheus` — `http://localhost:9090`. Scrapes both `api:8000/metrics`
+     and `worker:9100/metrics` every 15s — see "Worker service" below for
+     why the worker needs its own scrape target.
    - `grafana` — `http://localhost:3001`. Login `admin` / `admin` (local-only
      deployment, not exposed publicly — change it if that ever changes). The
      Prometheus datasource and a starter "TIP — API Overview" dashboard are
@@ -106,6 +121,53 @@ implementation `src/market_data/factory.py` wires up:
   **Only ever register the Kite Connect app with read-only market-data
   scope.** If it's ever re-registered with order/write scope for any
   reason, treat that as a stop-the-line event — see `docs/CLAUDE.md` §2.
+
+## Worker service
+
+`worker` replaces manually curling `POST /api/v1/recommendations/{symbol}`
+with an automatic scan across the whole active watchlist.
+
+- **Schedule**: wakes every `PATTERN_SCAN_INTERVAL_SECONDS` (default 300s
+  — matches a 5-minute candle close). No APScheduler or cron — a plain
+  loop, since a bare `while True: sleep(...)` is enough at this scale.
+- **Market-hours gate** (`src/worker/market_hours.py`): only scans Mon-Fri
+  09:15-15:30 IST. Outside that window it just sleeps and logs nothing —
+  check `docker compose logs worker` for a `cycle start` line to confirm
+  it's actually scanning versus correctly idle. **No NSE holiday
+  calendar** — a holiday still passes this check. In `sample` mode that's
+  harmless; in `live` mode a closed-market Kite response just returns too
+  few candles, which the existing `MIN_CANDLES_FOR_RECOMMENDATION` guard
+  already rejects (no bad recommendation gets created, just a wasted API
+  call — see `docs/assumptions.md`).
+- **Scope per cycle**: every active watchlist constituent + sector index
+  (same set the Settings screen toggles), across all 4 supported
+  timeframes (`15m`/`30m`/`1h`/`2h`).
+- **Dedup**: Redis-backed (`src/worker/dedup.py`) — a bar already
+  evaluated isn't re-evaluated on the next tick. Inspect keys directly if
+  you need to debug it:
+  ```
+  docker compose exec redis redis-cli --scan --pattern "worker:last_scanned:*"
+  ```
+- **Resilience**: one symbol/timeframe failing (bad data, a DB hiccup)
+  is logged and skipped — it never aborts the rest of that cycle's
+  watchlist, and a whole-cycle failure never kills the process, just
+  waits for the next interval.
+- **Manually triggering a cycle outside market hours** (useful for local
+  testing): `docker compose exec` starts a *separate* process from the
+  worker's own main loop, so this only exercises the DB/Redis/alerts side
+  — it won't show up on the worker's own `:9100/metrics` (see below).
+  ```
+  docker compose exec worker python3 -c "from src.worker.main import run_one_cycle; run_one_cycle()"
+  ```
+- **Metrics**: the worker is a separate OS process from `api`, and
+  `prometheus_client` keeps one in-memory registry per process — even
+  though both import the same `Counter`/`Histogram` objects from
+  `src/metrics.py`, the worker's increments never reach `api:8000/metrics`.
+  It runs its own exporter on port `9100`
+  (`prometheus_client.start_http_server` in `src/worker/main.py`), scraped
+  as the separate `tip-worker` Prometheus target. Check
+  `http://localhost:9090/targets` to confirm both `tip-api` and
+  `tip-worker` report `UP`.
 
 ## Single-founder auth model
 
@@ -177,9 +239,13 @@ MVP target is a single managed container host (Render, Railway, Fly.io, or
 a personal VPS) — not Kubernetes, not a multi-region setup. This is a
 personal decision-support tool for one founder.
 
-1. Build and push the `api` and `frontend` images (`Dockerfile` for `api`;
-   `frontend/` needs its own build — `npm run build` then serve the
-   `dist/` output, e.g. via nginx).
+1. Build and push the `api`, `worker`, and `frontend` images. `api` and
+   `worker` share the same `Dockerfile` and image — locally they reuse one
+   built image (see "Worker service" above); in production, build it once
+   and run it as two separate services/processes with different start
+   commands (`uvicorn ...` vs `python -m src.worker.main`). `frontend/`
+   needs its own build — `npm run build` then serve the `dist/` output,
+   e.g. via nginx.
 2. Provision a managed Postgres 15 instance with the TimescaleDB extension
    available. Point `DATABASE_URL` at it and run `alembic upgrade head`
    once before first traffic — don't rely on the `api` container's
@@ -230,6 +296,14 @@ personal decision-support tool for one founder.
   written for every channel (`dashboard` always shows `sent`; `telegram`/
   `email` show `sent` only if configured, `failed` otherwise — never
   faked).
+- Confirm the worker is alive and correctly gated:
+  `docker compose logs worker` should show `worker starting,
+  scan_interval_seconds=...`. During real market hours it should show
+  `cycle start` / `cycle complete` lines every interval; outside market
+  hours it should show neither (silently idle, not crashed — check
+  `docker compose ps worker` shows `Up` if the log is quiet and you're
+  unsure). `http://localhost:9090/targets` should show both `tip-api` and
+  `tip-worker` as `UP`.
 - Confirm no order-placement Kite Connect calls exist anywhere in `src/`:
   ```
   docker compose exec api pytest tests/test_no_order_placement.py -q

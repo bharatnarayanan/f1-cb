@@ -614,6 +614,80 @@ Confirmed while scoping, then built exactly as proposed:
     against the real repo rather than assumed. Full suite: 250 passed, 1
     skipped, 0 failed.
 
+## Worker service pass (post-Phase-8) — new decisions
+
+76. **Extracted the recommendation pipeline out of the HTTP route** into
+    `src/recommendation_pipeline.py` (`generate_recommendation`) rather
+    than having the new `worker` service reimplement it by hand — the
+    route (`src/routes/recommendations.py`) is now a thin wrapper. This
+    mirrors the same "one implementation, two callers" reasoning already
+    used for `src/db/founder.py`. `src/engine/*` stays pure/deterministic
+    (no I/O) per `docs/CLAUDE.md` section 3; the new pipeline module is
+    where the I/O orchestration (DB, market data, narration, alert
+    dispatch) that was already living in the route actually belongs.
+77. **Dedup is opt-in via a `dedup_cache` parameter**, not baked into
+    `generate_recommendation` unconditionally — `src/routes/scan.py`'s
+    long-standing docstring flagged this gap ("the real worker will
+    dedupe by only ever scanning the newest closed candle"), but the
+    on-demand HTTP route must NOT dedupe: a founder manually re-triggering
+    a scan wants a fresh evaluation even against a bar already looked at.
+    Only the worker (`src/worker/main.py`) passes a real `RedisCache`;
+    the route's behavior is provably unchanged (same tests, same
+    monkeypatch targets moved, nothing else). Backed by Redis
+    (`src/worker/dedup.py`, 7-day TTL) rather than a new DB table — a lost
+    key on a Redis restart just means one bar gets re-evaluated once,
+    which is harmless, not a correctness bug.
+78. **No NSE holiday calendar in the market-hours gate**
+    (`src/worker/market_hours.py`) — a holiday still passes the Mon-Fri
+    09:15-15:30 IST check and the worker scans on it. Flagged, not
+    silently assumed away: in `sample` mode this is harmless (synthetic
+    data doesn't know what a holiday is); in `live` mode, Kite calls
+    against a closed market return stale/empty candles, which
+    `MIN_CANDLES_FOR_RECOMMENDATION`'s existing guard already rejects
+    rather than firing a bad recommendation (`docs/CLAUDE.md` section 6)
+    — so the gap degrades to "wasted API calls on holidays," not a false
+    recommendation.
+79. **`worker` reuses the `api` service's built image** rather than its
+    own `build:` block in `docker-compose.yml` — both share the identical
+    Dockerfile/context, so a separate build would just re-run the same
+    multi-minute TA-Lib + vectorbt/numpy/scipy dependency install for zero
+    benefit. Switched to this after four consecutive independent build
+    attempts failed on transient PyPI read-timeouts (a different package
+    failed each time — scipy, fastapi, sqlalchemy — confirming host
+    network flakiness, not a real dependency conflict, verified separately
+    with a bare `pip install` outside Docker). `docker compose build api`
+    keeps the shared image current for both services.
+80. **Found and fixed a real gap during live verification, not just
+    documented it**: `prometheus_client` keeps one in-memory registry per
+    process. The worker imports the same `Counter`/`Histogram` objects
+    from `src/metrics.py` that `api` does, but as a separate process its
+    increments were invisible to Prometheus, which only scraped
+    `api:8000/metrics` — recommendations the worker created or suppressed
+    would have silently never shown up on the Phase 8 dashboard. Fixed by
+    giving the worker its own `prometheus_client.start_http_server` on
+    port 9100 (`src/worker/main.py`) and a second Prometheus scrape target
+    (`monitoring/prometheus.yml`). Confirmed live: `docker compose exec
+    worker python3 -c "..."` calls run in a *separate* process from the
+    worker's own PID 1 loop, so they don't share a registry either — had
+    to verify via a one-off container that both started the exporter and
+    ran a cycle in the same process (matching what `main()` actually does)
+    to see real counts on port 9100, then confirmed Prometheus's
+    `tip-worker` target reports `health: up`.
+81. **Live-verified end to end against the real running stack**: the
+    market-hours gate correctly stayed idle at the real current time
+    (21:36 IST, well outside 09:15-15:30) despite the worker running for
+    several minutes — confirmed by absence of any "cycle start" log, not
+    just by reading the code; a manually-triggered cycle iterated the
+    full active watchlist × all 4 timeframes, created recommendations,
+    dispatched alerts (honestly `failed` for unconfigured Telegram/email,
+    `sent` for dashboard), and correctly stopped once the daily cap was
+    hit mid-cycle without crashing; real Redis dedup keys were inspected
+    directly (`worker:last_scanned:{symbol}:{timeframe}` → ISO
+    timestamp) to confirm the mechanism writes correctly against the
+    actual Redis instance, not just in mocked unit tests. Full suite: 267
+    passed, 1 skipped, 0 failed (17 new tests: market-hours gate, dedup,
+    pipeline dedup integration, worker cycle resilience).
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).
