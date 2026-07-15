@@ -839,6 +839,45 @@ Confirmed while scoping, then built exactly as proposed:
     phases (`SECRET_KEY`/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES` all
     existed in `src/config.py` from the start).
 
+## Live Kite Connect smoke test — findings
+
+101. **Read-only market data confirmed working end to end against the
+    real Zerodha API**, `DATA_MODE=live`: real quote (`RELIANCE`
+    ₹1300.40), real India VIX (13.41, regime `normal`), real instrument
+    resolution, and a real Kite auth failure correctly raising
+    `MarketDataAuthError` (tested with a deliberately invalid token,
+    without touching the real one) — all via
+    `src/market_data/kite_client.py`'s existing read-only wrapper. Tested
+    on a watchlist trimmed to 2 symbols first (`RELIANCE`, `TCS`) per the
+    session's own rate-limit-risk flag before ever considering the full
+    watchlist live — restored to all 20 symbols afterward.
+102. **A real, non-obvious data-availability gap found, not a bug**:
+    Kite's historical-candle API returned daily bars through the current
+    trading day, but zero 5-minute intraday bars for today specifically —
+    confirmed directly against the raw `kiteconnect` SDK (bypassing this
+    codebase's wrapper) to rule out an app-side bug before concluding
+    it's an upstream characteristic. `MIN_CANDLES_FOR_RECOMMENDATION`'s
+    existing guard (`docs/CLAUDE.md` section 6: never fire on missing
+    data) correctly refused to produce a recommendation rather than
+    fabricating one from stale data — confirmed live via both the route
+    (400, "Only 0 5m candles available") and a real worker cycle against
+    live data (logged as a per-symbol/timeframe warning, cycle completed
+    cleanly, nothing crashed). This is the guardrail behaving exactly as
+    designed under a real external-data edge case, not a failure —
+    revisit if this recurs consistently during actual market hours on a
+    later trading day, since a live founder deployment needs today's
+    intraday data to ever fire a Tactical/Impulse recommendation.
+103. **One test failure was a self-inflicted, expected artifact, not a
+    regression**: `test_data_mode_defaults_to_sample` reads
+    `Settings()` with no explicit `DATA_MODE`, which loads from `.env`
+    (`env_file=".env"` in `src/config.py`) — since `.env` was temporarily
+    set to `DATA_MODE=live` for this smoke test, the test correctly
+    reflected that. Reverted `.env` back to `DATA_MODE=sample` afterward
+    and confirmed the suite returned to 299 passed, 1 skipped, 0 failed.
+104. **`.env` is gitignored** — the `DATA_MODE` flip for this test never
+    touched anything trackable; only this decision-log entry is a real
+    file change from the smoke test itself.
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).
