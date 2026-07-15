@@ -4,6 +4,20 @@ READ-ONLY. Only wraps ltp(), ohlc(), historical_data(), and instruments() —
 Kite Connect's read endpoints. Do not add place_order / modify_order /
 cancel_order / gtt / basket order calls here or anywhere else in this
 codebase. See docs/CLAUDE.md section 2.
+
+get_historical_candles converts from_date/to_date to IST before calling
+the SDK — kiteconnect's historical_data() does `from_date.strftime(...)`
+internally, which drops tzinfo entirely and sends whatever raw wall-clock
+digits the datetime object holds. Kite's API always interprets that string
+as IST (no timezone parameter exists in the request). Every caller in this
+codebase builds from_date/to_date with `datetime.now(timezone.utc)`, so
+without this conversion every live historical-data call silently asks for
+the wrong window, offset by the full UTC-IST gap (5:30) — found live,
+against the real API, during the Phase 8+ live-Kite smoke test: a request
+for "today" during live market hours returned 0 candles, because the
+UTC wall-clock digits (e.g. 09:02) were sent as-is and read by Kite as
+09:02 **IST** — before market open. Confirmed by testing with IST-aware
+and naive datetimes, both of which correctly returned the full session.
 """
 
 import logging
@@ -19,6 +33,7 @@ from kiteconnect.exceptions import (
     TokenException,
 )
 
+from src.engine.seasonality import IST
 from src.market_data.base import MarketDataClient
 from src.market_data.exceptions import (
     MarketDataAuthError,
@@ -91,12 +106,17 @@ class KiteMarketDataClient(MarketDataClient):
         from_date: datetime,
         to_date: datetime,
     ) -> list[dict[str, Any]]:
+        # See module docstring — kiteconnect's SDK strftime()s these
+        # directly, dropping tzinfo, and Kite always reads the result as
+        # IST. Converting to IST here (not just tagging tzinfo) rewrites
+        # the actual wall-clock digits so any tz-aware input produces the
+        # correct request regardless of the caller's own timezone choice.
         return self._call_with_retry(
             "get_historical_candles",
             self._kite.historical_data,
             instrument_token,
-            from_date,
-            to_date,
+            from_date.astimezone(IST),
+            to_date.astimezone(IST),
             interval,
         )
 

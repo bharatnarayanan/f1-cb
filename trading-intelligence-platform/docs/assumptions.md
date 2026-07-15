@@ -863,10 +863,16 @@ Confirmed while scoping, then built exactly as proposed:
     (400, "Only 0 5m candles available") and a real worker cycle against
     live data (logged as a per-symbol/timeframe warning, cycle completed
     cleanly, nothing crashed). This is the guardrail behaving exactly as
-    designed under a real external-data edge case, not a failure —
-    revisit if this recurs consistently during actual market hours on a
-    later trading day, since a live founder deployment needs today's
-    intraday data to ever fire a Tactical/Impulse recommendation.
+    designed under a real external-data edge case, not a failure.
+    **Resolved**: confirmed with Zerodha support the same day — same-day
+    intraday historical data requires Kite Connect's separate paid
+    Historical Data add-on subscription; the base app only serves daily
+    granularity plus live LTP/quotes. Not an API lag, not a code bug, not
+    a clock-skew artifact — a subscription tier gap. Action is on the
+    founder's Zerodha account (enable the add-on), not a code change. Once
+    enabled, re-run the same probe (`kite.historical_data(token,
+    from_date, to_date, "5minute")` for a live symbol during market hours)
+    to confirm bars actually come back before trusting live recommendations.
 103. **One test failure was a self-inflicted, expected artifact, not a
     regression**: `test_data_mode_defaults_to_sample` reads
     `Settings()` with no explicit `DATA_MODE`, which loads from `.env`
@@ -877,6 +883,61 @@ Confirmed while scoping, then built exactly as proposed:
 104. **`.env` is gitignored** — the `DATA_MODE` flip for this test never
     touched anything trackable; only this decision-log entry is a real
     file change from the smoke test itself.
+
+## Kite historical-data timezone bug — found and fixed
+
+105. **The "same-day intraday data unavailable" finding above (#102) was
+    wrong about the root cause** — not a Zerodha subscription/lag issue
+    at all. Isolated by requesting a known window (yesterday and last
+    Friday) with explicit UTC-aware datetimes: only 9 bars came back
+    (09:15-09:55) instead of a full session, while the exact same window
+    passed as IST-aware or naive datetimes correctly returned 75 bars.
+    Root cause: `kiteconnect`'s `historical_data()` does
+    `from_date.strftime("%Y-%m-%d %H:%M:%S")` internally — this drops
+    tzinfo entirely and sends whatever raw wall-clock digits the object
+    holds. Kite's API has no timezone parameter; it always reads that
+    string as IST. Every caller in this codebase builds `from_date`/
+    `to_date` with `datetime.now(timezone.utc)`, so every live historical
+    request was silently asking for the wrong window, offset by the full
+    UTC-IST gap (5:30) — "today, 09:15 market open" (UTC digits) was read
+    as "09:15 IST," before market open, hence zero candles for "today"
+    specifically (a wide enough backward-looking window for "yesterday"
+    still accidentally overlapped real market hours, which is why that
+    direction looked like it worked and masked the bug for hours of
+    testing).
+106. **Fixed at the abstraction boundary**
+    (`src/market_data/kite_client.py`'s `get_historical_candles`), not at
+    each of the 5 call sites — `.astimezone(IST)` on both `from_date`/
+    `to_date` before handing them to the SDK, so any tz-aware input
+    produces a correct request regardless of the caller's own timezone
+    choice. Same "wrap Kite behind an interface so this kind of fix
+    doesn't touch callers" reasoning `docs/CLAUDE.md` section 6 already
+    called for. Reused `src/engine/seasonality.py`'s existing `IST`
+    constant rather than redefining `ZoneInfo("Asia/Kolkata")` again.
+107. **Regression test added** (`tests/test_market_data.py`) using a
+    real mid-session UTC timestamp (09:15 UTC = 14:45 IST, not a
+    boundary value that could coincidentally pass either way) — asserts
+    the exact IST wall-clock datetime the SDK receives. The pre-existing
+    `test_get_historical_candles_passes_through` used naive datetimes and
+    would have silently passed either way (bug or no bug) once naive
+    input started being converted too, since `.astimezone()` on a naive
+    datetime just assumes system-local tz, which happens to be UTC in
+    this Docker image — updated it to use tz-aware input and assert the
+    converted output explicitly.
+108. **Live-verified the fix produced the first genuinely real,
+    end-to-end recommendation this platform has ever made**: real 65
+    intraday bars for today came back through the actual
+    `KiteMarketDataClient` wrapper (not just the raw SDK), then a real
+    `POST /api/v1/recommendations/RELIANCE` produced an actual scored
+    recommendation from real market data — pattern `pin_bar` (bearish),
+    confidence 52.78, risk 20.0, conviction 47.5, alerts dispatched
+    (dashboard sent, Telegram/email honestly failed since unconfigured).
+    Left that recommendation row in the database — it's real, not
+    synthetic test data, unlike the earlier `NSE:SYNTH` seed rows.
+    Watchlist trimmed to one symbol and the daily cap temporarily raised
+    for this test, both restored afterward (15/15 constituents, 5/5
+    sectors, cap back to 20); `DATA_MODE` reverted to `sample`. Full
+    suite: 300 passed, 1 skipped, 0 failed (2 new/updated tests).
 
 ## Explicitly not built (matches session's own phasing)
 
