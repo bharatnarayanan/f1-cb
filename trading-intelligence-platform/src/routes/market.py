@@ -12,9 +12,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user
 from src.cache.redis_client import DEFAULT_QUOTE_TTL_SECONDS, RedisCache, get_redis_cache
 from src.config import Settings, get_settings
-from src.db.models import IndiaVixSnapshot
+from src.db.models import IndiaVixSnapshot, User
 from src.db.risk_settings import get_vix_thresholds
 from src.db.session import get_db
 from src.market_data.base import MarketDataClient
@@ -34,6 +35,7 @@ def get_quote(
     market: MarketDataClient = Depends(get_market_data_client),
     cache: RedisCache = Depends(get_redis_cache),
     settings: Settings = Depends(get_settings),
+    _: User = Depends(get_current_user),
 ) -> dict:
     """Latest live price for one symbol, e.g. GET /quote/NIFTY 50.
 
@@ -69,6 +71,7 @@ def get_vix(
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_db),
     cache: RedisCache = Depends(get_redis_cache),
+    _: User = Depends(get_current_user),
 ) -> dict:
     """Latest India VIX value + regime. Fetches live, then persists a
     snapshot row (india_vix_snapshots) so the reading isn't lost between

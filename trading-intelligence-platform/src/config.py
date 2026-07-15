@@ -29,7 +29,11 @@ class Settings(BaseSettings):
 
     # --- Auth ---
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    access_token_expire_minutes: int = Field(default=60, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    # 7 days, not the more typical 60-minute web-app default — single
+    # founder, one device, no refresh-token flow built (MVP decision,
+    # docs/assumptions.md). Still fully configurable if the founder wants
+    # it tighter.
+    access_token_expire_minutes: int = Field(default=10080, alias="ACCESS_TOKEN_EXPIRE_MINUTES")
 
     # --- Zerodha Kite Connect: READ-ONLY market data scope only. ---
     # Never populate these with an app registered for order-management

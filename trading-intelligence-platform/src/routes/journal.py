@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user
 from src.db.factor_weights import get_confidence_weights, recompute_factor_weights
 from src.db.founder import get_founder
-from src.db.models import TradeJournalEntry
+from src.db.models import TradeJournalEntry, User
 from src.db.session import get_db
 from src.market_data.exceptions import MarketDataInvalidRequest
 
@@ -35,7 +36,9 @@ class JournalEntryRequest(BaseModel):
 
 
 @router.post("")
-def log_outcome(body: JournalEntryRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+def log_outcome(
+    body: JournalEntryRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     if body.outcome not in _VALID_OUTCOMES:
         raise MarketDataInvalidRequest(f"unsupported outcome={body.outcome!r} — use one of {sorted(_VALID_OUTCOMES)}.")
 
@@ -65,7 +68,7 @@ def log_outcome(body: JournalEntryRequest, db: Session = Depends(get_db)) -> dic
 
 
 @router.get("")
-def list_entries(db: Session = Depends(get_db)) -> dict[str, Any]:
+def list_entries(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, Any]:
     entries = db.execute(select(TradeJournalEntry).order_by(TradeJournalEntry.logged_at.desc())).scalars().all()
     return {
         "entries": [
@@ -82,12 +85,12 @@ def list_entries(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/factor-weights")
-def get_factor_weights(db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_factor_weights(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, Any]:
     return {"weights": get_confidence_weights(db)}
 
 
 @router.post("/recompute-weights")
-def recompute_weights(db: Session = Depends(get_db)) -> dict[str, Any]:
+def recompute_weights(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, Any]:
     try:
         summary = recompute_factor_weights(db)
     except SQLAlchemyError:

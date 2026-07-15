@@ -14,13 +14,19 @@ import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 
+from src.auth.dependencies import get_current_user
 from src.cache.redis_client import RedisCache, get_redis_cache
 from src.config import Settings, get_settings
+from src.db.models import User
 from src.db.session import get_db
 from src.main import app
 from src.market_data.factory import get_market_data_client
 
 _START = datetime(2026, 7, 1, 9, 15)
+
+
+def _fake_user() -> User:
+    return User(id="00000000-0000-0000-0000-000000000001", email="founder@local", hashed_password="x")
 
 
 def _fake_settings() -> Settings:
@@ -115,6 +121,7 @@ def client(fake_db_session, fake_market_client, monkeypatch):
     app.dependency_overrides[get_redis_cache] = lambda: shared_cache
     app.dependency_overrides[get_settings] = _fake_settings
     app.dependency_overrides[get_market_data_client] = lambda: fake_market_client
+    app.dependency_overrides[get_current_user] = _fake_user
     yield TestClient(app)
     app.dependency_overrides.clear()
 

@@ -24,8 +24,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user
 from src.config import Settings, get_settings
-from src.db.models import NegationPrediction, PatternDetected, SrLevelRecord
+from src.db.models import NegationPrediction, PatternDetected, SrLevelRecord, User
 from src.db.risk_settings import get_vix_thresholds
 from src.db.session import get_db
 from src.engine.aggregation import resample_candles
@@ -52,6 +53,7 @@ def run_scan(
     market: MarketDataClient = Depends(get_market_data_client),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    _: User = Depends(get_current_user),
 ) -> dict:
     kite_symbol = f"{exchange}:{symbol}"
     instrument_token = resolve_instrument_token(market, exchange, symbol)

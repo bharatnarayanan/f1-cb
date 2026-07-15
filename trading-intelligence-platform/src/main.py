@@ -22,6 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.auth.exceptions import AuthenticationError
 from src.cache.redis_client import RedisCache, get_redis_cache
 from src.config import Settings, get_settings
 from src.db.session import get_db
@@ -31,7 +32,7 @@ from src.market_data.exceptions import (
     MarketDataUnavailable,
 )
 from src.metrics import api_errors_total, http_request_duration_seconds, http_requests_total
-from src.routes import journal, market, paper_trades, recommendations, scan, settings, strategies
+from src.routes import auth, journal, market, paper_trades, recommendations, scan, settings, strategies
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,16 @@ def _market_data_invalid_request_handler(request: Request, exc: MarketDataInvali
     )
 
 
+@app.exception_handler(AuthenticationError)
+def _authentication_error_handler(request: Request, exc: AuthenticationError) -> JSONResponse:
+    api_errors_total.labels(code="authentication_required").inc()
+    return JSONResponse(
+        status_code=401,
+        content={"detail": str(exc), "code": "authentication_required"},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 @app.exception_handler(SQLAlchemyError)
 def _sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
     # Per docs/CLAUDE.md section 6: never fabricate — surface a clean 503
@@ -152,9 +163,10 @@ def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONRespon
     )
 
 
-# auth is the one route module from docs/api_routes.md still unbuilt — no
-# login/JWT system exists (docs/assumptions.md #36); every other route
-# below resolves the single seeded founder user instead (src/db/founder.py).
+# auth.router is unprotected (POST /login is how a request gets a token in
+# the first place) — every other router below requires get_current_user
+# (src/auth/dependencies.py) on each route, added per-route in this pass.
+app.include_router(auth.router)
 app.include_router(market.router)
 app.include_router(scan.router)
 app.include_router(recommendations.router)

@@ -23,9 +23,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user
 from src.config import Settings, get_settings
 from src.db.founder import get_founder
-from src.db.models import RiskSettings, SectorIndexRecord, WatchlistConstituent
+from src.db.models import RiskSettings, SectorIndexRecord, User, WatchlistConstituent
 from src.db.session import get_db
 from src.market_data.exceptions import MarketDataInvalidRequest
 
@@ -64,7 +65,7 @@ def _serialize_risk_settings(row: RiskSettings) -> dict[str, Any]:
 
 
 @router.get("/watchlist")
-def get_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_watchlist(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, Any]:
     constituents = db.execute(select(WatchlistConstituent).order_by(WatchlistConstituent.symbol)).scalars().all()
     sectors = db.execute(select(SectorIndexRecord).order_by(SectorIndexRecord.symbol)).scalars().all()
     return {
@@ -77,7 +78,9 @@ def get_watchlist(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.patch("/watchlist/constituents/{symbol}")
-def toggle_constituent(symbol: str, body: ToggleActiveRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+def toggle_constituent(
+    symbol: str, body: ToggleActiveRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     row = db.execute(select(WatchlistConstituent).where(WatchlistConstituent.symbol == symbol)).scalar_one_or_none()
     if row is None:
         raise MarketDataInvalidRequest(f"No watchlist constituent found with symbol={symbol!r}.")
@@ -93,7 +96,9 @@ def toggle_constituent(symbol: str, body: ToggleActiveRequest, db: Session = Dep
 
 
 @router.patch("/watchlist/sectors/{symbol}")
-def toggle_sector(symbol: str, body: ToggleActiveRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+def toggle_sector(
+    symbol: str, body: ToggleActiveRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     row = db.execute(select(SectorIndexRecord).where(SectorIndexRecord.symbol == symbol)).scalar_one_or_none()
     if row is None:
         raise MarketDataInvalidRequest(f"No sector index found with symbol={symbol!r}.")
@@ -109,7 +114,7 @@ def toggle_sector(symbol: str, body: ToggleActiveRequest, db: Session = Depends(
 
 
 @router.get("/risk")
-def get_risk_settings(db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_risk_settings(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, Any]:
     founder = get_founder(db)
     row = db.execute(select(RiskSettings).where(RiskSettings.user_id == founder.id)).scalar_one_or_none()
     if row is None:
@@ -118,7 +123,9 @@ def get_risk_settings(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.put("/risk")
-def update_risk_settings(body: RiskSettingsUpdate, db: Session = Depends(get_db)) -> dict[str, Any]:
+def update_risk_settings(
+    body: RiskSettingsUpdate, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     if body.execution_mode is not None and body.execution_mode not in _VALID_EXECUTION_MODES:
         raise MarketDataInvalidRequest(
             f"execution_mode must be one of {sorted(_VALID_EXECUTION_MODES)} — no other mode is ever permitted."
@@ -146,7 +153,9 @@ def update_risk_settings(body: RiskSettingsUpdate, db: Session = Depends(get_db)
 
 
 @router.get("/alerts")
-def get_alerts_status(settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+def get_alerts_status(
+    settings: Settings = Depends(get_settings), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     return {
         "telegram_configured": bool(settings.telegram_bot_token and settings.telegram_chat_id),
         "email_configured": bool(settings.smtp_host and settings.smtp_user and settings.smtp_password and settings.alert_email_to),

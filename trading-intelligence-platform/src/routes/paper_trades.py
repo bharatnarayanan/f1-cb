@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user
 from src.config import Settings, get_settings
 from src.db.founder import get_founder
-from src.db.models import PaperTrade, Recommendation
+from src.db.models import PaperTrade, Recommendation, User
 from src.db.session import get_db
 from src.engine.paper_trading import compute_pnl_pct, evaluate_exit, resolve_exit_rule
 from src.engine.scoring import SrContextLevel
@@ -69,6 +70,7 @@ def open_paper_trade(
     body: OpenPaperTradeRequest,
     market: MarketDataClient = Depends(get_market_data_client),
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     recommendation = _get_recommendation_or_400(db, body.recommendation_id)
     direction = _ACTION_TO_DIRECTION.get(recommendation.action)
@@ -133,6 +135,7 @@ def close_paper_trade(
     body: ClosePaperTradeRequest = ClosePaperTradeRequest(),
     market: MarketDataClient = Depends(get_market_data_client),
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     trade = _get_paper_trade_or_400(db, paper_trade_id)
     if trade.status == "closed":
@@ -178,7 +181,9 @@ def close_paper_trade(
 
 
 @router.get("")
-def list_paper_trades(status: str | None = None, db: Session = Depends(get_db)) -> dict[str, Any]:
+def list_paper_trades(
+    status: str | None = None, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     query = select(PaperTrade)
     if status is not None:
         query = query.where(PaperTrade.status == status)

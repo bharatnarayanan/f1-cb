@@ -38,6 +38,10 @@ vectorbt==0.28.5
 # released 5.0.0 major bump for the same reason as vectorbt/numpy above.
 bcrypt==4.3.0
 
+# JWT issuance/validation for login (docs/CLAUDE.md section 4: "Email/
+# password, JWT, bcrypt"). MIT-licensed, the standard choice.
+PyJWT==2.9.0
+
 # Alerts (Phase 6, docs/CLAUDE.md section 4). python-telegram-bot v20+ is
 # fully async (Bot.send_message is a coroutine) — wrapped with asyncio.run()
 # at the one call site in src/alerts/telegram.py rather than making routes

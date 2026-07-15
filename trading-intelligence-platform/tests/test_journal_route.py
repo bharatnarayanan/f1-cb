@@ -7,6 +7,7 @@ import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 
+from src.auth.dependencies import get_current_user
 from src.cache.redis_client import RedisCache, get_redis_cache
 from src.config import Settings, get_settings
 from src.db.models import TradeJournalEntry, User
@@ -45,6 +46,7 @@ def client(fake_db_session):
     app.dependency_overrides[get_redis_cache] = lambda: shared_cache
     app.dependency_overrides[get_settings] = _fake_settings
     app.dependency_overrides[get_market_data_client] = lambda: MagicMock()
+    app.dependency_overrides[get_current_user] = _founder
     yield TestClient(app)
     app.dependency_overrides.clear()
 

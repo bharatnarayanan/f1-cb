@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { clearToken, getToken } from "./api/auth";
 import { fetchHealth } from "./api/client";
 import { Dashboard } from "./pages/Dashboard";
+import { Login } from "./pages/Login";
 import { PaperTrading } from "./pages/PaperTrading";
 import { RecommendationDetail } from "./pages/RecommendationDetail";
 import { SettingsScreen } from "./pages/SettingsScreen";
@@ -18,13 +20,28 @@ type View =
 
 function App() {
   const [view, setView] = useState<View>({ name: "dashboard" });
-  const { data: health } = useQuery({ queryKey: ["health"], queryFn: fetchHealth, refetchInterval: 60_000 });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => getToken() !== null);
+  const { data: health } = useQuery({
+    queryKey: ["health"],
+    queryFn: fetchHealth,
+    refetchInterval: 60_000,
+    enabled: isAuthenticated,
+  });
 
   const navButton = (label: string, target: View, matches: (v: View) => boolean) => (
     <button className={matches(view) ? "active" : ""} onClick={() => setView(target)}>
       {label}
     </button>
   );
+
+  const handleLogout = () => {
+    clearToken();
+    setIsAuthenticated(false);
+  };
+
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <div className="app-shell">
@@ -42,6 +59,7 @@ function App() {
               <span>{health.status}</span>
             </>
           )}
+          <button onClick={handleLogout}>Logout</button>
         </div>
       </div>
 

@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user
 from src.config import Settings, get_settings
 from src.db.founder import get_founder
-from src.db.models import Strategy, StrategyBacktest, StrategyFusion
+from src.db.models import Strategy, StrategyBacktest, StrategyFusion, User
 from src.db.session import get_db
 from src.engine.backtest import run_backtest
 from src.engine.fusion import fuse_strategies
@@ -63,7 +64,12 @@ def _get_strategy_or_400(db: Session, strategy_id: str) -> Strategy:
 
 
 @router.post("")
-def ingest_strategy(body: IngestStrategyRequest, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)) -> dict[str, Any]:
+def ingest_strategy(
+    body: IngestStrategyRequest,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    _: User = Depends(get_current_user),
+) -> dict[str, Any]:
     if body.source_type not in ("text", "pseudocode", "pine_script", "video"):
         raise MarketDataInvalidRequest(f"unsupported source_type={body.source_type!r}")
 
@@ -107,7 +113,7 @@ def ingest_strategy(body: IngestStrategyRequest, db: Session = Depends(get_db), 
 
 
 @router.get("")
-def list_strategies(db: Session = Depends(get_db)) -> dict[str, Any]:
+def list_strategies(db: Session = Depends(get_db), _: User = Depends(get_current_user)) -> dict[str, Any]:
     strategies = db.execute(select(Strategy).order_by(Strategy.created_at.desc())).scalars().all()
     return {
         "strategies": [
@@ -118,7 +124,9 @@ def list_strategies(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/{strategy_id}")
-def get_strategy(strategy_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_strategy(
+    strategy_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     strategy = _get_strategy_or_400(db, strategy_id)
     return {
         "id": str(strategy.id),
@@ -135,6 +143,7 @@ def backtest_strategy(
     db: Session = Depends(get_db),
     market: MarketDataClient = Depends(get_market_data_client),
     settings: Settings = Depends(get_settings),
+    _: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     strategy = _get_strategy_or_400(db, strategy_id)
     if strategy.canonical_logic is None:
@@ -194,7 +203,9 @@ def backtest_strategy(
 
 
 @router.post("/fuse")
-def fuse(body: FuseStrategiesRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+def fuse(
+    body: FuseStrategiesRequest, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     base = _get_strategy_or_400(db, body.base_strategy_id)
     other = _get_strategy_or_400(db, body.other_strategy_id)
     if base.canonical_logic is None or other.canonical_logic is None:
@@ -234,7 +245,9 @@ def fuse(body: FuseStrategiesRequest, db: Session = Depends(get_db)) -> dict[str
 
 
 @router.get("/{strategy_id}/export")
-def export_strategy(strategy_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def export_strategy(
+    strategy_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     strategy = _get_strategy_or_400(db, strategy_id)
     if strategy.canonical_logic is None:
         raise MarketDataInvalidRequest(f"Strategy {strategy_id} has no canonical_logic yet — extract it first.")

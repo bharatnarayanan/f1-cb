@@ -744,6 +744,101 @@ Confirmed while scoping, then built exactly as proposed:
     failed (14 new tests: weight-update math, factor-weights resolver,
     recompute orchestration, journal route wiring).
 
+## Auth pass, Pass A (backend) — new decisions
+
+88. **This is a login gate for the one seeded founder, not a
+    registration system** — no signup route exists or ever should
+    (`docs/CLAUDE.md`'s non-goals: no public multi-tenant SaaS). Every
+    route except `GET /health`, `GET /metrics`, and `POST
+    /api/v1/auth/login` now requires a Bearer JWT
+    (`get_current_user`, `src/auth/dependencies.py`) — 25 routes across 7
+    files, verified by counting `@router.` decorators against
+    `Depends(get_current_user)` occurrences per file rather than trusting
+    a manual pass.
+89. **The founder's seeded password hash was never a real password** —
+    migration 0004 seeded `hashed_password` with
+    `bcrypt.hashpw(uuid.uuid4().bytes, ...)`, an unknowable random value,
+    since no login system existed to ever need a known one. A real
+    password has to be set once via a new local script
+    (`scripts/set_founder_password.py`), deliberately not an HTTP
+    endpoint — an unauthenticated "set password" route would itself be a
+    hole. bcrypt correctly just rejects any password attempt against the
+    placeholder hash rather than erroring, so login before running the
+    script fails cleanly as "incorrect password," no special-casing
+    needed.
+90. **PyJWT added** (`requirements.txt`) — MIT-licensed, matches
+    `docs/CLAUDE.md`'s own stack choice ("Email/password, JWT, bcrypt").
+    `SECRET_KEY`/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES` already
+    existed unused in `src/config.py` since early phases — this pass is
+    what finally reads them.
+91. **`ACCESS_TOKEN_EXPIRE_MINUTES` default changed 60 -> 10080 (7
+    days)** — no refresh-token rotation was built (deliberate MVP cut, a
+    distinct future pass if wanted); single founder, single device,
+    re-logging in hourly would just be friction with no real security
+    benefit at this threat model. No brute-force lockout either — same
+    "flagged, not silently cut" posture.
+92. **A distinct `AuthenticationError` from `MarketDataAuthError`** —
+    the latter is Kite Connect rejecting our credentials to a third
+    party; this one is a request not proving its own identity to this
+    API. Conflating them would make the 401 response's error message
+    misleading about which credential is actually the problem.
+93. **Route-level tests override `get_current_user` at the
+    `app.dependency_overrides` boundary** (a fake `User` returned
+    directly), not by minting real JWTs per test — same "patch at the
+    boundary, exercise the real thing in its own dedicated test file"
+    convention already used for `get_vix_thresholds`/
+    `get_guardrail_settings`/`get_confidence_weights`. The auth module's
+    own behavior (password hashing, JWT create/decode including expired/
+    tampered/wrong-secret cases, `get_current_user`'s every rejection
+    path, the login route itself) has 22 new dedicated tests instead.
+94. **Live-verified end to end**: every protected route confirmed 401
+    with no token and 200 with a real one (looped through all 6 route
+    files via curl, not just one sample route); tampered token, wrong
+    auth scheme, and garbage token all correctly rejected; `/health` and
+    `/metrics` confirmed to stay open; the `worker` service confirmed
+    completely unaffected (it calls `generate_recommendation` as a plain
+    Python function, never through the HTTP/auth layer) by running a real
+    cycle after the change. Full suite: 299 passed, 1 skipped, 0 failed
+    (22 new tests).
+95. **Pass B (frontend: login screen, token storage, logout) is
+    deliberately not started** — backend-only, as split and approved.
+    Every route above now 401s without a token, so the existing frontend
+    is currently broken against this backend until Pass B ships; that's
+    expected mid-split state, not a regression to fix in Pass A.
+
+## Auth pass, Pass B (frontend) — new decisions
+
+96. **`login()` deliberately bypasses the shared `request()` helper**
+    (`frontend/src/api/client.ts`) — every other call goes through
+    `request()`, which now clears the stored token and force-reloads to
+    the login screen on any 401 (a stale/expired token on an authenticated
+    route). If `login()` used that same path, typing a wrong password
+    would silently wipe the (nonexistent) token and reload the whole page
+    instead of showing an inline "incorrect password" error on the form —
+    caught while designing the interceptor, not after shipping it.
+97. **Token storage is a 3-function localStorage wrapper**
+    (`frontend/src/api/auth.ts`) — no auth context/provider, no state
+    library. Matches this frontend's existing minimalism (view routing is
+    a raw `useState` in `App.tsx`, no router library) — a global
+    `isAuthenticated` boolean plus a full-page reload on 401 is enough at
+    single-founder, single-tab scale.
+98. **Logout is a plain button**, not a confirm dialog — clears the token
+    and flips local state back to the login screen. Nothing destructive
+    happens (no server-side session to invalidate — JWTs are stateless),
+    so there's nothing to confirm.
+99. **Live-verified through the actual frontend origin, not just the
+    backend directly**: login and an authenticated request were both
+    curled with `Origin: http://localhost:5173` and confirmed correct
+    CORS headers plus 200s; the same authenticated route with no token
+    from that same origin correctly 401s. `npx tsc -b` and `npm run build`
+    both clean. Backend suite re-run untouched at 299 passed, 1 skipped —
+    this pass touched no backend code.
+100. **Auth pass (both passes) closes CLAUDE.md's stack table entry**
+    ("Email/password, JWT, bcrypt") — the last piece of the originally
+    documented stack that was sitting configured-but-unused since early
+    phases (`SECRET_KEY`/`JWT_ALGORITHM`/`ACCESS_TOKEN_EXPIRE_MINUTES` all
+    existed in `src/config.py` from the start).
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

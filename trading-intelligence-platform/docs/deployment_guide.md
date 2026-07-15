@@ -171,20 +171,39 @@ with an automatic scan across the whole active watchlist.
 
 ## Single-founder auth model
 
-There is no login/JWT system in this codebase — deliberately deferred (see
-`docs/assumptions.md`). Every route resolves a single seeded founder user
-(`src/db/founder.py`, fixed UUID, seeded by migration `0004`). `SECRET_KEY`
-is still required by `src/config.py` (JWT infra exists at the config layer
-for when auth is eventually added) but nothing currently signs a token with
-it. This is fine for the personal, single-founder scope this tool is built
-for (`docs/CLAUDE.md` §10) — it is not a multi-tenant product.
+Every route except `GET /health`, `GET /metrics`, and `POST
+/api/v1/auth/login` requires a Bearer JWT (`get_current_user`,
+`src/auth/dependencies.py`). There is still only one user — the seeded
+founder (`src/db/founder.py`, fixed UUID, seeded by migration `0004`) —
+this is a login **gate**, not a multi-tenant system: no signup route
+exists or ever should (`docs/CLAUDE.md`'s non-goals explicitly rule out
+public signup/multi-tenant SaaS).
+
+**First-time setup**: the founder's seeded password hash is an unusable
+random placeholder — nobody knows it, by design. Set a real one once:
+```
+docker compose exec api python3 scripts/set_founder_password.py
+```
+Then log in:
+```
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "founder@local", "password": "<your password>"}'
+```
+returns `{"access_token": "...", "token_type": "bearer"}`. Send it as
+`Authorization: Bearer <token>` on every other request. Tokens last 7 days
+by default (`ACCESS_TOKEN_EXPIRE_MINUTES`) — no refresh-token flow exists,
+just log in again when it expires. `SECRET_KEY` signs these tokens; it's
+the same value already required by `src/config.py`.
 
 ## Environment variables
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `ENVIRONMENT` | no | `development` | |
-| `SECRET_KEY` | yes | — | Generate with `openssl rand -hex 32`. Not currently used to sign anything live (no auth routes exist yet), but required by config validation. |
+| `SECRET_KEY` | yes | — | Generate with `openssl rand -hex 32`. Signs every login JWT (`src/auth/jwt.py`) — changing it invalidates every issued token immediately. |
+| `JWT_ALGORITHM` | no | `HS256` | |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | no | `10080` (7 days) | Single-device MVP, no refresh-token flow — tighten this if you want shorter sessions. |
 | `DATABASE_URL` | yes (set by compose for the `api` container) | — | `postgresql+psycopg://tip:tip@timescaledb:5432/tip` inside Docker. |
 | `REDIS_URL` | no | `redis://redis:6379/0` | Live tick cache, quote/VIX caching. |
 | `DATA_MODE` | no | `sample` | `sample` (default, no credentials needed) or `live` (real Kite Connect). |
@@ -284,6 +303,11 @@ personal decision-support tool for one founder.
 - `GET /health` returns `{"status": "ok", "database": "ok", "redis": "ok", ...}`.
 - `GET /metrics` returns Prometheus text format with at least the
   `python_info` and `tip_http_requests_total` series present.
+- Any protected route without a token returns 401
+  (`curl http://localhost:8000/api/v1/recommendations` with no
+  `Authorization` header); `POST /api/v1/auth/login` with the founder's
+  real password returns a token; the same route with that token as
+  `Authorization: Bearer <token>` returns 200.
 - `docker compose exec api alembic current` shows the latest revision
   applied with no pending migrations (`alembic history` to see them all).
 - Fire a real recommendation end to end:

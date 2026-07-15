@@ -8,6 +8,7 @@ import fakeredis
 import pytest
 from fastapi.testclient import TestClient
 
+from src.auth.dependencies import get_current_user
 from src.cache.redis_client import RedisCache, get_redis_cache
 from src.config import Settings, get_settings
 from src.db.models import RiskSettings, SectorIndexRecord, User, WatchlistConstituent
@@ -59,6 +60,7 @@ def client(fake_db_session):
     # param, breaking every route with a 422 — a real bug caught live.
     app.dependency_overrides[get_settings] = lambda: _fake_settings()
     app.dependency_overrides[get_market_data_client] = lambda: MagicMock()
+    app.dependency_overrides[get_current_user] = _founder
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -176,6 +178,7 @@ def test_alerts_status_reports_configured_when_env_set(fake_db_session):
         SMTP_HOST="smtp.example.com", SMTP_USER="u", SMTP_PASSWORD="p", ALERT_EMAIL_TO="me@example.com",
     )
     app.dependency_overrides[get_market_data_client] = lambda: MagicMock()
+    app.dependency_overrides[get_current_user] = _founder
     client = TestClient(app)
 
     response = client.get("/api/v1/settings/alerts")

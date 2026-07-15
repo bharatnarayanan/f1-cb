@@ -1,3 +1,4 @@
+import { clearToken, getToken } from "./auth";
 import type {
   AlertsStatus,
   BacktestResult,
@@ -20,15 +21,43 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
   });
+  if (response.status === 401) {
+    // Every authenticated route 401s the same way on a missing/expired/
+    // invalid token (src/auth/dependencies.py) — clear the stale token and
+    // force back to the login screen. login() itself never reaches here
+    // (it's a separate raw fetch below) — a wrong password on the login
+    // form should show an inline error, not reload the page.
+    clearToken();
+    window.location.reload();
+    throw new Error("Session expired — please log in again.");
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(body.detail ?? `Request to ${path} failed (${response.status})`);
   }
   return response.json() as Promise<T>;
+}
+
+export async function login(email: string, password: string): Promise<{ access_token: string; token_type: string }> {
+  const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(body.detail ?? "Login failed");
+  }
+  return response.json();
 }
 
 export function listRecommendations(params: { category?: string; limit?: number } = {}) {

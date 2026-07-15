@@ -26,8 +26,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.auth.dependencies import get_current_user
 from src.config import Settings, get_settings
-from src.db.models import Recommendation
+from src.db.models import Recommendation, User
 from src.db.session import get_db
 from src.market_data.base import MarketDataClient
 from src.market_data.exceptions import MarketDataInvalidRequest
@@ -45,6 +46,7 @@ def create_recommendation(
     market: MarketDataClient = Depends(get_market_data_client),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    _: User = Depends(get_current_user),
 ) -> dict:
     return generate_recommendation(
         symbol=symbol, exchange=exchange, timeframe=timeframe, market=market, db=db, settings=settings
@@ -73,6 +75,7 @@ def list_recommendations(
     status: str | None = None,
     limit: int = 50,
     db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     query = select(Recommendation).order_by(Recommendation.created_at.desc()).limit(limit)
     if category is not None:
@@ -85,7 +88,9 @@ def list_recommendations(
 
 
 @router.get("/{recommendation_id}")
-def get_recommendation(recommendation_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def get_recommendation(
+    recommendation_id: str, db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> dict[str, Any]:
     try:
         parsed_id = uuid.UUID(recommendation_id)
     except ValueError:
