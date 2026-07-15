@@ -1,10 +1,12 @@
 import type {
   AlertsStatus,
   BacktestResult,
+  FactorWeights,
   IngestStrategyResponse,
   JournalEntry,
   JournalOutcome,
   PaperTrade,
+  RecomputeWeightsResponse,
   RecommendationDetail,
   RecommendationSummary,
   RiskSettings,
@@ -107,6 +109,14 @@ export function listJournalEntries() {
 
 export function logJournalOutcome(body: { recommendation_id?: string; outcome: JournalOutcome; realized_pnl_pct?: number; observation?: string }) {
   return request<JournalEntry>("/api/v1/journal", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function getFactorWeights() {
+  return request<FactorWeights>("/api/v1/journal/factor-weights");
+}
+
+export function recomputeFactorWeights() {
+  return request<RecomputeWeightsResponse>("/api/v1/journal/recompute-weights", { method: "POST" });
 }
 
 export function getWatchlist() {

@@ -1,9 +1,54 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { listJournalEntries, logJournalOutcome } from "../api/client";
+import { getFactorWeights, listJournalEntries, logJournalOutcome, recomputeFactorWeights } from "../api/client";
 import type { JournalOutcome } from "../api/types";
 
 const OUTCOMES: JournalOutcome[] = ["win", "loss", "breakeven", "not_taken"];
+
+function FactorWeightsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ["factor-weights"], queryFn: getFactorWeights });
+
+  const recompute = useMutation({
+    mutationFn: recomputeFactorWeights,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["factor-weights"] }),
+  });
+
+  return (
+    <div className="card">
+      <div style={{ fontWeight: 600, marginBottom: 10 }}>Confidence factor weights</div>
+      {data && (
+        <div style={{ marginBottom: 10 }}>
+          {Object.entries(data.weights).map(([factor, weight]) => (
+            <div className="trade-row" key={factor}>
+              <span>{factor.replace(/_/g, " ")}</span>
+              <span className="mono">{weight.toFixed(4)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <button className="btn" disabled={recompute.isPending} onClick={() => recompute.mutate()}>
+        Recompute from trade journal
+      </button>
+      {recompute.isError && <div className="empty-state bearish">{(recompute.error as Error).message}</div>}
+      {recompute.isSuccess && (
+        <div style={{ marginTop: 10 }}>
+          {Object.entries(recompute.data.result).map(([factor, r]) => (
+            <div key={factor} className="meta" style={{ fontSize: 12 }}>
+              {factor.replace(/_/g, " ")}: {r.before_weight.toFixed(4)} → {r.after_weight.toFixed(4)} ({r.num_outcomes} outcomes)
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="safety-footer" style={{ marginTop: 10 }}>
+        Recompute is founder-triggered only — a scoring change never
+        happens silently in the background. Weights are clamped to
+        [0.05, 0.50] and need real win/loss history to move meaningfully
+        from the starting values.
+      </p>
+    </div>
+  );
+}
 
 export function TradeJournal({ prefillRecommendationId }: { prefillRecommendationId?: string }) {
   const [recommendationId, setRecommendationId] = useState(prefillRecommendationId ?? "");
@@ -82,10 +127,8 @@ export function TradeJournal({ prefillRecommendationId }: { prefillRecommendatio
         </div>
       ))}
 
-      <p className="safety-footer">
-        This log is the seed data for a future weight-update job (not built yet — needs a scheduled worker service).
-        Logging here doesn't change any scoring today.
-      </p>
+      <h2 style={{ fontSize: 15, margin: "20px 0 8px" }}>Weight update</h2>
+      <FactorWeightsSection />
     </div>
   );
 }

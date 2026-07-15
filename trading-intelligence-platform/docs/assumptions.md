@@ -688,6 +688,62 @@ Confirmed while scoping, then built exactly as proposed:
     passed, 1 skipped, 0 failed (17 new tests: market-hours gate, dedup,
     pipeline dedup integration, worker cycle resilience).
 
+## Bayesian weight-update pass (CLAUDE.md item 9) — new decisions
+
+82. **Target is `CONFIDENCE_WEIGHTS`** (`src/engine/scoring.py`), not the
+    negation model's candles-to-negate heuristic table — the "weight
+    update" language in CLAUDE.md item 9 maps naturally onto the
+    confidence-scoring weights already using that exact term in code.
+    Negation-model calibration from trade-journal feedback is a distinct
+    future job if wanted, not bundled into this pass.
+83. **Method: Beta-Bernoulli conjugate update**, not a hand-rolled ML
+    model — per factor, a Beta(alpha, beta) posterior over "when this
+    factor said a setup was aligned, did the trade actually win?" A
+    trade counts toward a factor's tally only if that factor's `value`
+    was `>= 0.5` (`ALIGNMENT_THRESHOLD`) for that specific recommendation
+    — a trade where the factor had no strong opinion doesn't test whether
+    the factor was right. Only `win`/`loss` outcomes count;
+    `breakeven`/`not_taken` are excluded. Pure counting/statistics, no
+    LLM anywhere in the number (`docs/CLAUDE.md` section 3).
+84. **A real design bug caught by live-testing, not shipped**: the first
+    version used one flat prior (alpha=beta=5, mean 0.5) shared by every
+    factor. The moment `recompute_factor_weights` ran at all, every
+    factor with zero real trade-journal evidence silently collapsed to
+    weight 0.5 — erasing the original documented asymmetric defaults
+    (0.25/0.25/0.20/0.15/0.15) for any factor nobody had traded on yet,
+    which is exactly backwards for an MVP with near-zero trade volume.
+    Live-verified this by seeding 15 synthetic win/loss trades and
+    watching every untouched factor jump to 0.5 in the real response.
+    Fixed by giving each factor its own prior centered on its own
+    `CONFIDENCE_WEIGHTS` default (`default_prior()` in
+    `src/engine/weight_update.py`, 10 total pseudo-observations split
+    proportionally) — a zero-evidence factor now correctly keeps its
+    original weight; only factors with real outcomes move. Re-verified
+    live after the fix: the touched factor moved 0.25 → 0.5 from 12
+    wins/3 losses, every untouched factor stayed exactly at its default.
+85. **No factor weight may leave `[0.05, 0.50]`** — same "soft not hard"
+    posture as `src/engine/risk_guardrails.py`'s expiry dampening; strong
+    evidence should move a weight, never eliminate a factor from the
+    formula or let it dominate outright.
+86. **Recompute is founder-triggered only** (`POST
+    /api/v1/journal/recompute-weights`, a button on the Trade Journal
+    screen), not automatic on a schedule — a scoring change should never
+    happen silently in the background. Every recompute writes a full
+    before/after `audit_log` entry (`docs/CLAUDE.md` section 8) and
+    recomputes alpha/beta/weight from the *complete* history of matching
+    journal entries every time, not an incremental update — simpler, and
+    avoids any double-counting bug from a partially-applied previous run;
+    cheap at this trade volume.
+87. **Synthetic trade-journal data was needed to test any of this** —
+    the real `trade_journal` table had exactly 1 row all session. Seeded
+    15 fake win/loss entries tied to real (but synthetic-rationale)
+    `Recommendation` rows tagged `symbol='NSE:SYNTH'` for live
+    verification, then deleted them and re-ran the migration's seed
+    afterward so the founder's real data and default weights weren't left
+    polluted by test fixtures. Full suite: 281 passed, 1 skipped, 0
+    failed (14 new tests: weight-update math, factor-weights resolver,
+    recompute orchestration, journal route wiring).
+
 ## Explicitly not built (matches session's own phasing)
 
 - Live order execution (see #1 — permanent, not phase-gated).

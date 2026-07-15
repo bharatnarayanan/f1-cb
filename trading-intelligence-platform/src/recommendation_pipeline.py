@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from src.alerts.dispatcher import dispatch_alerts
 from src.cache.redis_client import RedisCache
 from src.config import Settings
+from src.db.factor_weights import get_confidence_weights
 from src.db.models import Recommendation, SectorIndexRecord, WatchlistConstituent
 from src.db.risk_settings import get_guardrail_settings, get_vix_thresholds
 from src.engine.aggregation import resample_candles
@@ -211,6 +212,7 @@ def generate_recommendation(
         vix_regime=vix_regime,
         is_impulse=is_impulse,
         negation_estimate=negation_estimate,
+        confidence_weights=get_confidence_weights(db),
     )
 
     if should_suppress_tactical(draft.category, vix_regime, guardrails.suppress_tactical_on_extreme):

@@ -385,3 +385,25 @@ class RiskSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
+
+
+class FactorWeight(Base):
+    """One row per src/engine/scoring.py CONFIDENCE_WEIGHTS factor
+    (migration 0008) — src/db/factor_weights.py resolves current weights
+    from here in preference to the hardcoded CONFIDENCE_WEIGHTS constant.
+    alpha/beta are Beta-Bernoulli posterior parameters
+    (src/engine/weight_update.py) updated from trade_journal outcomes by
+    recompute_factor_weights; weight is the resulting (clamped) posterior
+    mean. Never touched by the LLM — a deterministic computation over
+    structured win/loss counts (docs/CLAUDE.md section 3).
+    """
+
+    __tablename__ = "factor_weights"
+
+    factor_name: Mapped[str] = mapped_column(String, primary_key=True)
+    weight: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False)
+    alpha: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    beta: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )

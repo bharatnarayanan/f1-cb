@@ -113,6 +113,23 @@ export interface JournalEntry {
   observation: string | null;
 }
 
+// Mirrors src/routes/journal.py's factor-weights/recompute-weights routes.
+export interface FactorWeights {
+  weights: Record<string, number>;
+}
+
+export interface FactorWeightRecomputeResult {
+  before_weight: number;
+  after_weight: number;
+  alpha: number;
+  beta: number;
+  num_outcomes: number;
+}
+
+export interface RecomputeWeightsResponse {
+  result: Record<string, FactorWeightRecomputeResult>;
+}
+
 // Mirrors src/routes/settings.py (Phase 7 Pass 2b).
 export interface WatchlistConstituentSummary {
   symbol: string;

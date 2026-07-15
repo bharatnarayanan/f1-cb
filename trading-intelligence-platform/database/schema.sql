@@ -49,6 +49,19 @@ CREATE TABLE risk_settings (
     updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Bayesian trade-journal feedback loop (CLAUDE.md item 9, migration 0008).
+-- One row per src/engine/scoring.py CONFIDENCE_WEIGHTS factor. alpha/beta
+-- are Beta-Bernoulli posterior parameters; weight is the resulting
+-- (clamped) posterior mean src/db/factor_weights.py resolves in
+-- preference to the hardcoded constant.
+CREATE TABLE factor_weights (
+    factor_name         TEXT PRIMARY KEY,
+    weight              NUMERIC(5, 4) NOT NULL,
+    alpha               NUMERIC(10, 2) NOT NULL,
+    beta                NUMERIC(10, 2) NOT NULL,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Configurable heavyweight/sector watchlist (docs/assumptions.md #6).
 CREATE TABLE watchlist_constituents (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),

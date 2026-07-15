@@ -57,6 +57,7 @@ def build_recommendation(
     vix_regime: str,
     is_impulse: bool,
     negation_estimate: NegationEstimate,
+    confidence_weights: dict[str, float] | None = None,
 ) -> RecommendationDraft:
     if direction not in ("bullish", "bearish"):
         raise ValueError(f"unknown direction={direction!r}")
@@ -79,6 +80,7 @@ def build_recommendation(
         macro_sr_alignment=macro_sr_alignment,
         heavyweight_pattern_alignment=correlation_score,
         rsi_alignment=rsi_alignment,
+        weights=confidence_weights,
     )
     risk = compute_risk(vix_regime)
     conviction_score = compute_conviction(confidence["score"], risk["score"])

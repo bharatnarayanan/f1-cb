@@ -1,10 +1,10 @@
-"""Trade journal routes (F6.3) — logging only.
+"""Trade journal routes (F6.3 logging; weight recompute added CLAUDE.md
+item 9).
 
-Manual outcome logging is the input the future Bayesian pattern/negation
-weight-update job will consume — that job itself needs the scheduled
-`worker` service, which no phase has built yet (docs/assumptions.md).
-Logging ships now; the learning loop is explicitly deferred, not silently
-dropped.
+Manual outcome logging is the input the Bayesian confidence-factor
+weight-update job (src/db/factor_weights.py) consumes — recompute is
+founder-triggered here, not automatic, so a scoring change never happens
+silently (see that module's docstring for the actual math).
 """
 
 from datetime import datetime, timezone
@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from src.db.factor_weights import get_confidence_weights, recompute_factor_weights
 from src.db.founder import get_founder
 from src.db.models import TradeJournalEntry
 from src.db.session import get_db
@@ -78,3 +79,18 @@ def list_entries(db: Session = Depends(get_db)) -> dict[str, Any]:
             for e in entries
         ]
     }
+
+
+@router.get("/factor-weights")
+def get_factor_weights(db: Session = Depends(get_db)) -> dict[str, Any]:
+    return {"weights": get_confidence_weights(db)}
+
+
+@router.post("/recompute-weights")
+def recompute_weights(db: Session = Depends(get_db)) -> dict[str, Any]:
+    try:
+        summary = recompute_factor_weights(db)
+    except SQLAlchemyError:
+        db.rollback()
+        raise
+    return {"result": summary}

@@ -13,6 +13,7 @@ import pytest
 from src.cache.redis_client import RedisCache
 from src.config import Settings
 from src.db.risk_settings import GuardrailSettings
+from src.engine.scoring import CONFIDENCE_WEIGHTS
 from src.recommendation_pipeline import generate_recommendation
 
 _START = datetime(2026, 7, 1, 9, 15)
@@ -61,6 +62,7 @@ def fake_market_client():
 @pytest.fixture(autouse=True)
 def _patch_thresholds_and_guardrails(monkeypatch):
     monkeypatch.setattr("src.recommendation_pipeline.get_vix_thresholds", lambda db, settings: (15.0, 20.0, 30.0))
+    monkeypatch.setattr("src.recommendation_pipeline.get_confidence_weights", lambda db: dict(CONFIDENCE_WEIGHTS))
     monkeypatch.setattr(
         "src.recommendation_pipeline.get_guardrail_settings",
         lambda db: GuardrailSettings(

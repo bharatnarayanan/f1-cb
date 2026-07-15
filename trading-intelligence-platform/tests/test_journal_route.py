@@ -68,3 +68,22 @@ def test_list_entries(client):
 
     assert response.status_code == 200
     assert response.json()["entries"][0]["outcome"] == "win"
+
+
+def test_get_factor_weights(client, monkeypatch):
+    monkeypatch.setattr("src.routes.journal.get_confidence_weights", lambda db: {"macro_sr_alignment": 0.3})
+
+    response = client.get("/api/v1/journal/factor-weights")
+
+    assert response.status_code == 200
+    assert response.json()["weights"] == {"macro_sr_alignment": 0.3}
+
+
+def test_recompute_weights(client, monkeypatch):
+    fake_summary = {"macro_sr_alignment": {"before_weight": 0.25, "after_weight": 0.3, "alpha": 8, "beta": 5, "num_outcomes": 3}}
+    monkeypatch.setattr("src.routes.journal.recompute_factor_weights", lambda db: fake_summary)
+
+    response = client.post("/api/v1/journal/recompute-weights")
+
+    assert response.status_code == 200
+    assert response.json()["result"] == fake_summary

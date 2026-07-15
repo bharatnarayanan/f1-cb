@@ -112,7 +112,16 @@ def compute_confidence(
     rsi_alignment: float,
     strike_candle_pattern: float | None = None,
     oi_accumulation: float | None = None,
+    weights: dict[str, float] | None = None,
 ) -> dict[str, Any]:
+    """weights: overrides CONFIDENCE_WEIGHTS's hardcoded defaults — passed
+    by the I/O layer (src/recommendation_pipeline.py) after resolving the
+    founder's current factor_weights DB row (src/db/factor_weights.py).
+    Stays a plain dict-in, no DB access here — this module stays pure/
+    deterministic (docs/CLAUDE.md section 3) regardless of where the
+    weights came from.
+    """
+    weights = weights or CONFIDENCE_WEIGHTS
     factors = {
         "macro_sr_alignment": macro_sr_alignment,
         "heavyweight_pattern_alignment": heavyweight_pattern_alignment,
@@ -125,13 +134,13 @@ def compute_confidence(
     if not available:
         raise ValueError("compute_confidence needs at least one known factor")
 
-    weight_sum = sum(CONFIDENCE_WEIGHTS[name] for name in available)
+    weight_sum = sum(weights[name] for name in available)
     breakdown = {}
     for name, value in available.items():
-        renormalized_weight = CONFIDENCE_WEIGHTS[name] / weight_sum
+        renormalized_weight = weights[name] / weight_sum
         breakdown[name] = {
             "value": value,
-            "base_weight": CONFIDENCE_WEIGHTS[name],
+            "base_weight": weights[name],
             "renormalized_weight": round(renormalized_weight, 4),
             "contribution": round(value * renormalized_weight, 4),
         }

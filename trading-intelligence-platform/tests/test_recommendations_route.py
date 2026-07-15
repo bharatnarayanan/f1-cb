@@ -94,6 +94,13 @@ def client(fake_db_session, fake_market_client, monkeypatch):
     # threshold resolution — src/db/risk_settings.py's own tests cover that.
     from src.db.risk_settings import GuardrailSettings
 
+    # Same rationale — route tests care about scoring given already-
+    # resolved weights, not DB weight resolution (src/db/factor_weights.py
+    # has its own tests for that).
+    from src.engine.scoring import CONFIDENCE_WEIGHTS
+
+    monkeypatch.setattr("src.recommendation_pipeline.get_confidence_weights", lambda db: dict(CONFIDENCE_WEIGHTS))
+
     monkeypatch.setattr(
         "src.recommendation_pipeline.get_guardrail_settings",
         lambda db: GuardrailSettings(
