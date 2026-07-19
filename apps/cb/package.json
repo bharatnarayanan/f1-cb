@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@f1-cb/agents": "^0.1.0",
     "@f1-cb/spec": "^0.1.0",
     "@next/env": "16.2.10",
     "next": "16.2.10",

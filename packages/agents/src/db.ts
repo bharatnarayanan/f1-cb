@@ -1,20 +1,27 @@
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+let client: SupabaseClient | null = null;
+
 /**
- * Placeholder for the Supabase client (Part 5 "Store" row; tables defined in
- * /db/schema.sql: sessions, specs, lessons). Deliberately not implemented in
- * Phase 0 — this throws instead of silently doing nothing, so anything that
- * tries to persist a session/spec/lesson fails loudly and obviously.
+ * Lazily-constructed singleton Supabase client, using the service-role key
+ * (server-only — this file must never be imported into client components).
+ * Tables: sessions, specs, lessons — schema in /db/schema.sql.
  *
- * To activate:
- *   1. npm install @supabase/supabase-js --workspace @f1-cb/agents
- *   2. Run db/schema.sql against a Supabase project.
- *   3. Set NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY /
- *      SUPABASE_SERVICE_ROLE_KEY in .env.local (see .env.example).
- *   4. Replace the body below with:
- *        import { createClient } from "@supabase/supabase-js";
- *        return createClient(url, key);
+ * Fails loudly instead of silently no-op-ing if env vars are missing,
+ * continuing the pattern established when this file was a Phase 0 stub.
  */
-export function getDb(): never {
-  throw new Error(
-    "Supabase is not connected yet (Phase 0 placeholder). See packages/agents/src/db.ts for activation steps."
-  );
+export function getDb(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and " +
+        "SUPABASE_SERVICE_ROLE_KEY in .env.local (see .env.example), and make " +
+        "sure db/schema.sql has been run against that Supabase project."
+    );
+  }
+  if (!client) {
+    client = createClient(url, key, { auth: { persistSession: false } });
+  }
+  return client;
 }

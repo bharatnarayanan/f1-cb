@@ -24,3 +24,6 @@ export const DISCOVERY_MODEL = "claude-haiku-4-5";
 
 /** High-reasoning model for the one-shot, high-stakes spec compilation. */
 export const SPEC_COMPILER_MODEL = "claude-opus-4-8";
+
+/** Conversational model for CB's Consent Agent (roadmap Part 2.2). */
+export const CONSENT_MODEL = "claude-sonnet-4-6";

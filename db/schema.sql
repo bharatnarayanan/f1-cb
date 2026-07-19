@@ -1,11 +1,10 @@
 -- Postgres schema for F1 + CB (Part 5: "Store" row, Part 1.3 pitstop lessons).
 --
--- NOT CONNECTED YET. This file is a placeholder describing the tables Phase 1+
--- will need once Supabase is wired up. To activate:
---   1. Create a Supabase project.
---   2. Run this file against it (Supabase SQL editor, or `psql` / the CLI).
---   3. Fill in .env.local using .env.example as a guide.
---   4. Replace the stub in packages/agents/src/db.ts with a real client.
+-- Connected. sessions/specs/lessons are live on this project's Supabase
+-- instance; packages/agents/src/db.ts reads NEXT_PUBLIC_SUPABASE_URL /
+-- SUPABASE_SERVICE_ROLE_KEY from .env.local to talk to it. To point this
+-- repo at a different Supabase project later, run this file (plus the RLS
+-- block at the bottom) against the new project and update .env.local.
 
 create extension if not exists "uuid-ossp";
 create extension if not exists vector; -- pgvector, for embedding past specs (Part 4.6)
@@ -41,3 +40,10 @@ create table if not exists lessons (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+
+-- All access goes through the server-side service-role key
+-- (packages/agents/src/db.ts), which bypasses RLS — so this just blocks the
+-- unused anon/publishable key from reading or writing these tables directly.
+alter table sessions enable row level security;
+alter table specs enable row level security;
+alter table lessons enable row level security;

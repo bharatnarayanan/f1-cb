@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
-    "@f1-cb/spec": "^0.1.0"
+    "@f1-cb/spec": "^0.1.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

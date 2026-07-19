@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "description": "F1 (idea refinery) + Core Builder (CB) monorepo",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

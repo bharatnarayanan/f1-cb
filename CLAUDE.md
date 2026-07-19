@@ -12,23 +12,35 @@ A monorepo containing two apps and two shared packages:
   Discovery stage: a founder describes an idea, the Orchestrator asks batched
   questions, and once enough is known a Prompt Architect compiles a validated
   `buildspec.json` + `CLAUDE.md` for the target project.
-- `apps/cb` — the Core Builder. Consumes a `buildspec.json`, runs it through
-  four consent gates (Consent, Preview, Build, Feedback), ships an app.
-  Still a placeholder page — this is Phase 3+.
+- `apps/cb` — the Core Builder. Gate 1 (Consent) is live: paste a spec id,
+  the Consent Agent restates the plan and won't record consent until you
+  give explicit approval. Gates 2-4 (Preview, Build, Feedback) are not
+  built yet — Phase 3+.
 - `packages/spec` — the Zod schema for `buildspec.json`, plus a hand-written
   JSON-Schema mirror of it (`BUILD_SPEC_JSON_SCHEMA`) and of the intermediate
   `DiscoveryState` (`DISCOVERY_STATE_JSON_SCHEMA`) used as Claude tool
   `input_schema`s. The Zod schema is the **only** contract between F1 and CB;
-  both apps import from `@f1-cb/spec`, never redefine it locally.
-- `packages/agents` — F1's two live agents, calling the Claude API directly
-  via `@anthropic-ai/sdk`:
-  - `runDiscoveryTurn` — the Orchestrator's conversational reply plus a
+  both apps import from `@f1-cb/spec`, never redefine it locally. `consent`
+  is an optional field on `BuildSpec`, populated by CB's Gate 1.
+- `packages/agents` — the live agents, calling the Claude API directly via
+  `@anthropic-ai/sdk`:
+  - `runDiscoveryTurn` — F1's Orchestrator: conversational reply plus a
     second, tool-forced call that extracts structured `DiscoveryState` from
     the transcript so the UI can track progress without asking the model to
     self-report JSON inline with its chat text.
-  - `compileBuildSpec` — the Prompt Architect: one tool-forced call emits the
-    full `buildspec.json`, a second plain-text call writes the project's
+  - `compileBuildSpec` — F1's Prompt Architect: one tool-forced call emits
+    the full `buildspec.json`, a second plain-text call writes the project's
     `CLAUDE.md`.
+  - `runConsentTurn` — CB's Consent Agent (Gate 1): same two-call pattern as
+    Discovery — a conversational reply, then a tool-forced
+    `record_consent_decision` call that decides whether the founder's latest
+    message counts as explicit approval. The API route never string-matches
+    for "approved" itself; it only trusts this decision.
+  - `createSessionWithSpec` / `getSpecById` / `recordConsent` (in `store.ts`)
+    — the only code that reads/writes the `sessions` and `specs` tables.
+    This is the actual F1 -> CB transport today: F1's "Send to CB" button
+    calls `createSessionWithSpec` via `apps/f1/api/save-spec`, CB loads by
+    id via `apps/cb/api/load-spec`.
 - `prompts/` — the five master system prompts from roadmap Part 3, as
   versioned `.md` files. `packages/agents` loads these at runtime rather than
   inlining prompt text in code, so a non-engineer can edit agent behavior
@@ -56,7 +68,9 @@ A monorepo containing two apps and two shared packages:
   their Zod counterparts by hand.
 - Zod for the spec schema (runtime validation + inferred TS types in one).
 - Postgres via Supabase for `sessions` / `specs` / `lessons` — schema lives in
-  `db/schema.sql` but **is not connected yet**. See "What's not built yet".
+  `db/schema.sql`. `sessions` and `specs` are connected (see `store.ts`);
+  `lessons` (the pitstop learning loop) is defined but nothing writes to it
+  yet — that's Phase 2/5.
 
 ## Coding conventions
 
@@ -67,22 +81,26 @@ A monorepo containing two apps and two shared packages:
 - Keep placeholders explicit and loud (throw with a clear message) rather
   than silently no-op-ing — see `packages/agents/src/db.ts` for the pattern.
 
-## Explicit non-goals for Phase 1
+## Explicit non-goals for Phase 1 / CB Gate 1
 
 - No Research Agent, Repo Scout, Business Analyst, or Tech Advisor — that's
   Phase 2. Because of this, most `business`/`references`/`tech` fields in a
   compiled spec will read "unknown" until those specialists exist.
-- No Supabase connection — schema is defined, nothing is wired up. Sessions
-  and lessons are not persisted; refreshing the browser loses the chat.
-- No CB gates (Consent/Preview/Build/Feedback) implemented — Phase 3+.
+- `lessons` table (pitstop learning loop) is not written to yet.
+- CB Gates 2-4 (Preview/Build/Feedback) not implemented — Phase 3+. Gate 1's
+  chat history is also not persisted (only the final consent decision is);
+  refreshing CB's page loses the conversation but not the recorded consent.
 - No deployment/hosting setup — local-only.
 
 ## What's not built yet (and how to activate it later)
 
-- **Supabase**: fill in `.env.local` from `.env.example`, run
-  `db/schema.sql` against a Supabase project, then replace the stub in
-  `packages/agents/src/db.ts` with a real `@supabase/supabase-js` client.
+- **Supabase**: fill in `.env.local` from `.env.example` (project URL +
+  service role key), run `db/schema.sql` against that project's SQL editor.
+  `packages/agents/src/db.ts` reads those env vars directly — no other setup
+  needed once they're set.
 - **Research/Business/Tech specialist agents**: Phase 2 of the roadmap.
+- **CB Gates 2-4**: Preview (mock UI), Builder (headless Claude Code),
+  Feedback loop — Phase 3+.
 
 ## How to verify work
 

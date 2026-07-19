@@ -17,6 +17,9 @@ export default function Home() {
     null
   );
 
+  const [sendingToCb, setSendingToCb] = useState(false);
+  const [cbHandoff, setCbHandoff] = useState<{ sessionId: string; specId: string } | null>(null);
+
   async function sendMessage() {
     const userMessage = input.trim();
     if (!userMessage || sending) return;
@@ -56,6 +59,26 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setCompiling(false);
+    }
+  }
+
+  async function sendToCb() {
+    if (!compiled) return;
+    setSendingToCb(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/save-spec", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ buildSpec: compiled.buildSpec }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "Failed to save spec for CB");
+      setCbHandoff({ sessionId: data.sessionId, specId: data.specId });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setSendingToCb(false);
     }
   }
 
@@ -189,13 +212,25 @@ export default function Home() {
             </pre>
           </div>
           <div className="md:col-span-2">
-            <button
-              disabled
-              title="CB isn't built yet — this lands in Phase 3"
-              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-400 dark:border-zinc-700"
-            >
-              Send to CB (not built yet)
-            </button>
+            {!cbHandoff ? (
+              <button
+                onClick={sendToCb}
+                disabled={sendingToCb}
+                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-black"
+              >
+                {sendingToCb ? "Sending…" : "Send to CB"}
+              </button>
+            ) : (
+              <div className="rounded border border-emerald-300 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950">
+                <p className="font-medium">Saved for CB.</p>
+                <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                  Open CB (<code>npm run dev:cb</code>) and paste this spec id:
+                </p>
+                <p className="mt-2 select-all rounded bg-zinc-900 px-2 py-1 font-mono text-xs text-zinc-100">
+                  {cbHandoff.specId}
+                </p>
+              </div>
+            )}
           </div>
         </section>
       )}
