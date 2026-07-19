@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm run build --workspace @f1-cb/spec --workspace @f1-cb/agents",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
